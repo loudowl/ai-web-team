@@ -1,0 +1,54 @@
+"""Routes for Ollama model management."""
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model
+import config
+
+router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+@router.get("")
+def list_models():
+    """List all installed Ollama models plus configured remote providers."""
+    ollama_models = ollama_list_models()
+    return {
+        "ollama": ollama_models,
+        "providers": {
+            "openai":    {"available": bool(config.OPENAI_API_KEY),    "model": config.OPENAI_MODEL},
+            "anthropic": {"available": bool(config.ANTHROPIC_API_KEY), "model": config.ANTHROPIC_MODEL},
+            "ollama":    {"available": True,                           "model": config.OLLAMA_MODEL},
+        }
+    }
+
+
+class PullRequest(BaseModel):
+    model: str
+
+
+@router.post("/pull")
+def pull_model(req: PullRequest):
+    """Stream Ollama model pull progress (SSE-style)."""
+    def _generate():
+        try:
+            for chunk in ollama_pull_model(req.model):
+                yield f"data: {chunk}\n\n"
+            yield "data: {\"status\":\"complete\"}\n\n"
+        except Exception as e:
+            yield f"data: {{\"error\": \"{e}\"}}\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
+
+
+class DeleteRequest(BaseModel):
+    model: str
+
+
+@router.delete("")
+def delete_model(req: DeleteRequest):
+    ok = ollama_delete_model(req.model)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to delete model")
+    return {"deleted": req.model}

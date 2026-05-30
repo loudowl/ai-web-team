@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "AI Web Team",
+    "slug": "ai-web-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0d1117"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.loudowl.aiwebteam"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0d1117"
+      },
+      "package": "com.loudowl.aiwebteam"
+    },
+    "scheme": "aiwebteam"
+  }
+}
