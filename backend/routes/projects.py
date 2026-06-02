@@ -19,6 +19,11 @@ class CreateProjectRequest(BaseModel):
     model: Optional[str] = None
 
 
+class UpdateProjectRequest(BaseModel):
+    provider: Optional[str] = None   # openai | anthropic | ollama
+    model: Optional[str] = None
+
+
 @router.get("")
 def list_projects():
     return {"projects": db.list_projects()}
@@ -43,6 +48,22 @@ def get_project(project_id: str):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.patch("/{project_id}")
+def update_project(project_id: str, req: UpdateProjectRequest):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    fields = {}
+    if req.provider:
+        fields["provider"] = req.provider
+    if req.model is not None:
+        fields["model"] = req.model
+    if fields:
+        db.update_project(project_id, **fields)
+    return db.get_project(project_id)
 
 
 @router.get("/{project_id}/agents")

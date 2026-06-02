@@ -29,16 +29,17 @@ def stream_openai(prompt: str, agent: str = "pm", system: str = "") -> Generator
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    with client.chat.completions.stream(
+    stream = client.chat.completions.create(
         model=model,
         messages=messages,
         max_tokens=config.MAX_TOKENS_AGENT,
         temperature=0.6,
-    ) as stream:
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content if chunk.choices else None
+        if delta:
+            yield delta
 
 
 def stream_anthropic(prompt: str, agent: str = "pm", system: str = "") -> Generator[str, None, None]:

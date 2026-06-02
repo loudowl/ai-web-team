@@ -85,6 +85,47 @@ Produce an Architecture Document covering:
 8. **Deployment** — recommended hosting and CI/CD approach"""
 
 
+README_SYSTEM = """You are a senior developer advocate and technical writer who creates outstanding, comprehensive README files for open-source GitHub projects.
+Output ONLY the raw markdown content of the README — no preamble, no explanation, and do NOT wrap the whole thing in a code fence.
+Use GitHub-Flavored Markdown. When you include diagrams, use ```mermaid code blocks (GitHub renders these natively).
+Stay accurate to the provided materials; do not invent features that aren't implied by them."""
+
+
+def readme_prompt(brief: str, prd: str, design: str, architecture: str, file_paths: list) -> str:
+    files = "\n".join(f"- {p}" for p in file_paths) if file_paths else "(see repository)"
+    return f"""Write a comprehensive, professional README.md for the following project.
+
+**Project Brief:**
+{brief[:1200]}
+
+**PRD (excerpt):**
+{prd[:1200]}
+
+**Design Brief (excerpt):**
+{design[:800]}
+
+**Architecture (excerpt):**
+{architecture[:1800]}
+
+**Files in the repository:**
+{files}
+
+The README MUST include these sections (use `##` headings), in this order:
+1. `#` Project Name as an H1, followed by a one-line tagline, then a 2-3 sentence description.
+2. `## Features` — bulleted list of the key features.
+3. `## Tech Stack` — grouped (Frontend / Backend / Database / Infrastructure), with versions where known.
+4. `## Architecture` — a short overview paragraph, then a ```mermaid flowchart showing the main components (client, API, database, external services) and how they connect.
+5. `## User Flow` — a ```mermaid diagram (sequence or flowchart) of the primary user journey. Include this ONLY if it genuinely adds clarity for this type of app; otherwise omit the section entirely.
+6. `## Project Structure` — a fenced code block showing the folder/file tree, derived from the files listed above.
+7. `## Getting Started` — with subsections `### Prerequisites`, `### Installation`, `### Environment Variables` (reference the `.env.example`), and `### Running` (the actual commands to start it).
+8. `## Documentation` — link to the detailed docs that live in this repo: [Product Requirements](docs/PRD.md), [Design Brief](docs/DESIGN.md), [Architecture](docs/ARCHITECTURE.md).
+9. `## License` — MIT unless the brief implies otherwise.
+
+Mermaid rules to follow so diagrams render: no spaces in node IDs (use camelCase or underscores), wrap labels containing special characters in double quotes, and never use the reserved word `end` as a node ID.
+
+Output only the README markdown, starting with the `#` title."""
+
+
 def developer_prompt(brief: str, prd: str, design: str, architecture: str) -> str:
     return f"""Generate the complete implementation for this web application.
 

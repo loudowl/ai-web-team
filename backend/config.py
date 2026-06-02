@@ -3,7 +3,7 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 # ── Model providers ────────────────────────────────────────────────────────────
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY", "")
