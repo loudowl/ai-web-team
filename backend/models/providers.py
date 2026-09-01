@@ -21,25 +21,35 @@ def _resolve_model(agent: str, provider: str) -> str:
 
 
 def stream_openai(prompt: str, agent: str = "pm", system: str = "") -> Generator[str, None, None]:
+    """Stream via the Responses API — the endpoint purpose-built for reasoning
+    models. We pass a per-agent `reasoning.effort` and use `max_output_tokens`;
+    `temperature` and penalties are intentionally omitted (reasoning models
+    reject or ignore them). If a model doesn't accept the `reasoning` param we
+    gracefully retry without it."""
     from openai import OpenAI
     client = OpenAI(api_key=config.OPENAI_API_KEY)
     model = _resolve_model(agent, "openai")
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
 
-    stream = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        max_tokens=config.MAX_TOKENS_AGENT,
-        temperature=0.6,
-        stream=True,
-    )
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content if chunk.choices else None
-        if delta:
-            yield delta
+    kwargs = {
+        "model": model,
+        "input": prompt,
+        "max_output_tokens": config.MAX_TOKENS_AGENT,
+        "stream": True,
+    }
+    if system:
+        kwargs["instructions"] = system
+
+    effort = config.AGENT_REASONING_EFFORT.get(agent)
+    try:
+        stream = client.responses.create(**kwargs, reasoning={"effort": effort} if effort else {})
+    except Exception:
+        # Model doesn't support reasoning effort (e.g. a non-reasoning model) —
+        # retry without it rather than failing the agent.
+        stream = client.responses.create(**kwargs)
+
+    for event in stream:
+        if getattr(event, "type", "") == "response.output_text.delta":
+            yield event.delta
 
 
 def stream_anthropic(prompt: str, agent: str = "pm", system: str = "") -> Generator[str, None, None]:
@@ -47,10 +57,19 @@ def stream_anthropic(prompt: str, agent: str = "pm", system: str = "") -> Genera
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     model = _resolve_model(agent, "anthropic")
 
+    # Prompt caching: the system prompt is stable across every call for an
+    # agent, so mark it with cache_control to read it back at ~10% of input
+    # cost on subsequent requests instead of re-billing it each time.
+    system_blocks = [{
+        "type": "text",
+        "text": system or "You are a helpful AI assistant.",
+        "cache_control": {"type": "ephemeral"},
+    }]
+
     with client.messages.stream(
         model=model,
         max_tokens=config.MAX_TOKENS_AGENT,
-        system=system or "You are a helpful AI assistant.",
+        system=system_blocks,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         for text in stream.text_stream:
