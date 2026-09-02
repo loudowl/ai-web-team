@@ -35,6 +35,11 @@ const initialTicketState = () => ({
     JIRA_MILESTONES.map(m => [m.id, { status: 'pending', detail: '' }])
   ),
   active: false,
+  startedAt: null,
+  thinkingSince: null,
+  thinkingMessage: '',
+  thinkingPhase: '',
+  lastTokenAt: null,
 });
 
 export const useProjectStore = create((set, get) => ({
@@ -53,6 +58,7 @@ export const useProjectStore = create((set, get) => ({
   // Jira mode — keyed by ticket_id
   ticketStates: {},
   tickets: [],
+  activeTicketId: null,
 
   setTickets: (tickets) => {
     const ticketStates = {};
@@ -74,6 +80,7 @@ export const useProjectStore = create((set, get) => ({
     feedMessages: [],
     ticketStates: {},
     tickets: [],
+    activeTicketId: null,
   }),
 
   handleWsEvent: (event) => {
@@ -87,8 +94,20 @@ export const useProjectStore = create((set, get) => ({
         if (type === 'ticket_start' || type === 'agent_start') {
           ts.active = true;
           ts.status = 'running';
+          ts.startedAt = ts.startedAt || Date.now();
+          ts.thinkingSince = ts.thinkingSince || Date.now();
         } else if (type === 'token') {
           ts.output = (ts.output || '') + data;
+          ts.lastTokenAt = Date.now();
+        } else if (type === 'thinking') {
+          ts.thinkingSince = ts.thinkingSince || Date.now();
+          try {
+            const info = JSON.parse(data);
+            ts.thinkingMessage = info.message || 'Thinking…';
+            if (info.phase) ts.thinkingPhase = info.phase;
+          } catch {
+            ts.thinkingMessage = data || 'Thinking…';
+          }
         } else if (type === 'milestone') {
           try {
             const m = JSON.parse(data);
@@ -96,6 +115,11 @@ export const useProjectStore = create((set, get) => ({
               ...ts.milestones,
               [m.milestone_id]: { status: m.status, detail: m.detail || '' },
             };
+            if (m.status === 'running') {
+              ts.thinkingSince = Date.now();
+              ts.thinkingPhase = m.milestone_id;
+              ts.thinkingMessage = m.detail || '';
+            }
           } catch {}
         } else if (type === 'tasks') {
           try { ts.tasks = JSON.parse(data); } catch {}
@@ -114,6 +138,7 @@ export const useProjectStore = create((set, get) => ({
 
         return {
           ticketStates: { ...s.ticketStates, [ticketId]: ts },
+          activeTicketId: ts.active ? ticketId : s.activeTicketId,
           feedMessages: [
             ...s.feedMessages,
             {

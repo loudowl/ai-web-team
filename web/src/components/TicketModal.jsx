@@ -2,11 +2,14 @@ import { X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useProjectStore } from '../store/projectStore';
+import ThinkingIndicator, { getTicketActivity } from './ThinkingIndicator';
 
 export default function TicketModal({ ticketId, onClose }) {
   const { tickets, ticketStates, JIRA_MILESTONES } = useProjectStore();
   const ticket = tickets.find(t => t.id === ticketId);
   const ts = ticketStates[ticketId] || {};
+  const activity = getTicketActivity(ts, JIRA_MILESTONES);
+  const isRunning = ts.status === 'running' || ts.active;
 
   if (!ticket) return null;
 
@@ -34,14 +37,19 @@ export default function TicketModal({ ticketId, onClose }) {
               View pull request
             </a>
           )}
+          {isRunning && <ThinkingIndicator ticketId={ticketId} />}
           <div className="section-label" style={{ margin: '0 0 8px' }}>MILESTONES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {JIRA_MILESTONES.map(m => {
               const ms = ts.milestones?.[m.id] || { status: 'pending' };
               const color = ms.status === 'done' ? '#3fb950' : ms.status === 'running' ? '#d29922' : '#484f58';
+              const isActiveStep = ms.status === 'running' && activity?.label === m.label;
               return (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />
+                  <span
+                    className={isActiveStep ? 'milestone-dot pulse' : 'milestone-dot'}
+                    style={{ background: color }}
+                  />
                   <span style={{ color: '#e6edf3', flex: 1 }}>{m.label}</span>
                   {ms.detail && <span className="meta-text">{ms.detail.slice(0, 40)}</span>}
                 </div>
@@ -64,7 +72,9 @@ export default function TicketModal({ ticketId, onClose }) {
         <div className="modal-body">
           <div className="markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {ts.output || ticket.description || '_Waiting for agent output…_'}
+              {ts.output || (isRunning
+                ? '_Waiting for model output — local Codestral can take several minutes before the first token appears._'
+                : ticket.description || '_Waiting for agent output…_')}
             </ReactMarkdown>
           </div>
         </div>

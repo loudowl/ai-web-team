@@ -238,3 +238,23 @@ Requirements:
 
 You MUST include at least one `### \`path/to/file\`` code block. Do not ask questions — implement."""
 
+
+def jira_implement_retry_prompt(ticket: dict, plan_output: str) -> str:
+    return f"""Your previous response for {ticket.get('key', '')} did NOT include parseable code files.
+
+Output ONLY changed files now — no prose before the file blocks.
+
+Required format for EVERY file:
+
+### `path/from/repo/root.ext`
+```lang
+full file contents
+```
+
+Ticket: {ticket.get('title', '')}
+
+Approved plan (follow this):
+{plan_output[:6000]}
+
+Start immediately with `### ` file blocks. Include at least one real file from the repo."""
+

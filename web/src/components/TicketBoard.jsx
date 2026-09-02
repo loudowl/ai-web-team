@@ -1,4 +1,6 @@
 import { useProjectStore } from '../store/projectStore';
+import ThinkingIndicator, { getTicketActivity, formatElapsed } from './ThinkingIndicator';
+import { useEffect, useState } from 'react';
 
 const STATUS_COLORS = {
   pending: '#8b949e',
@@ -8,7 +10,18 @@ const STATUS_COLORS = {
 };
 
 export default function TicketBoard({ onTicketPress }) {
-  const { tickets, ticketStates } = useProjectStore();
+  const { tickets, ticketStates, JIRA_MILESTONES } = useProjectStore();
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    const hasActive = tickets.some(t => {
+      const ts = ticketStates[t.id];
+      return ts?.active || ts?.status === 'running';
+    });
+    if (!hasActive) return undefined;
+    const id = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [tickets, ticketStates]);
 
   if (!tickets.length) {
     return <div className="empty-italic" style={{ padding: 16 }}>No tickets loaded.</div>;
@@ -21,6 +34,7 @@ export default function TicketBoard({ onTicketPress }) {
         {tickets.map(t => {
           const ts = ticketStates[t.id] || {};
           const status = ts.status || t.status || 'pending';
+          const activity = getTicketActivity(ts, JIRA_MILESTONES);
           const doneTasks = (ts.tasks || []).filter(x => x.status === 'done').length;
           const totalTasks = (ts.tasks || []).length;
 
@@ -53,6 +67,15 @@ export default function TicketBoard({ onTicketPress }) {
               {(t.pr_url || ts.prUrl) && (
                 <div className="meta-text" style={{ marginTop: 6, color: '#58a6ff' }}>
                   PR ready
+                </div>
+              )}
+              {activity && (
+                <div className="meta-text" style={{ marginTop: 6, color: '#d29922' }}>
+                  {activity.isStreaming ? 'Streaming' : activity.isThinking ? 'Thinking' : 'Working'}
+                  {' · '}
+                  {activity.label}
+                  {' · '}
+                  {formatElapsed(Date.now() - (activity.since || Date.now()))}
                 </div>
               )}
               {ts.active && (

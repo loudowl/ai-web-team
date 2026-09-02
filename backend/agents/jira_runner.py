@@ -3,6 +3,7 @@ Jira Mode runner — one senior_dev agent per ticket (concurrency capped via JIR
 """
 
 import asyncio
+import contextlib
 import json
 import re
 import uuid
@@ -18,6 +19,7 @@ from agents.prompts import (
     JIRA_MILESTONES,
     jira_analyze_prompt,
     jira_implement_prompt,
+    jira_implement_retry_prompt,
 )
 from utils.repo_context import build_repo_context, list_repos
 from utils.git_worktree import ensure_worktree
@@ -32,19 +34,29 @@ def _validate_plan(plan_output: str, ticket: dict) -> None:
     """Fail fast when the model clearly ignored the Jira ticket."""
     text = plan_output.lower()
     key = (ticket.get("key") or "").lower()
-    if key and key in text:
-        return
+    if not key or key not in text:
+        raise RuntimeError(
+            f"Plan does not reference ticket {ticket.get('key', '')}. "
+            "The model likely lost context — delete this session and retry."
+        )
 
     title = ticket.get("title") or ""
-    keywords = [w.lower() for w in re.findall(r"[A-Za-z]{5,}", title)][:6]
+    stop = {
+        "reduce", "article", "articles", "pages", "page", "frontend", "backend",
+        "implement", "fixed", "fixes", "update", "updates", "change", "changes",
+        "ticket", "jira", "issue", "task", "fe", "seo", "the", "and", "for", "with",
+    }
+    keywords = [
+        w.lower() for w in re.findall(r"[A-Za-z]{3,}", title)
+        if w.lower() not in stop
+    ][:8]
     hits = sum(1 for w in keywords if w in text)
-    if hits >= 2:
-        return
-
-    raise RuntimeError(
-        f"Plan does not reference ticket {ticket.get('key', '')} or its topic. "
-        "The model likely lost context — delete this session and retry."
-    )
+    if hits < 2:
+        raise RuntimeError(
+            f"Plan does not address the ticket topic ({title}). "
+            f"Expected terms like: {', '.join(keywords[:5])}. "
+            "The model likely lost context — delete this session and retry."
+        )
 
 
 def _parse_task_list(markdown: str) -> List[Dict]:
@@ -65,6 +77,7 @@ async def _stream_agent(
     provider: str,
     ticket_id: str,
     emit,
+    phase: str = "llm",
 ) -> str:
     loop = asyncio.get_event_loop()
     gen = stream_response(
@@ -80,13 +93,40 @@ async def _stream_agent(
         except StopIteration:
             return None
 
+    await emit("thinking", AGENT, json.dumps({
+        "phase": phase,
+        "message": "Waiting for model — local Ollama can take several minutes before the first token.",
+    }), ticket_id)
+
     full = []
-    while True:
-        chunk = await loop.run_in_executor(None, _next_chunk)
-        if chunk is None:
-            break
-        full.append(chunk)
-        await emit("token", AGENT, chunk, ticket_id)
+    got_token = False
+    pulsing = True
+
+    async def _heartbeat():
+        while pulsing:
+            await asyncio.sleep(20)
+            if pulsing and not got_token:
+                await emit("thinking", AGENT, json.dumps({
+                    "phase": phase,
+                    "message": "Still thinking…",
+                }), ticket_id)
+
+    heartbeat = asyncio.create_task(_heartbeat())
+    try:
+        while True:
+            chunk = await loop.run_in_executor(None, _next_chunk)
+            if chunk is None:
+                break
+            if not got_token:
+                got_token = True
+            full.append(chunk)
+            await emit("token", AGENT, chunk, ticket_id)
+    finally:
+        pulsing = False
+        heartbeat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat
+
     return "".join(full)
 
 
@@ -148,7 +188,7 @@ async def run_ticket(
         # Plan
         await milestone("analyze_plan", "running")
         plan_prompt = jira_analyze_prompt(ticket, repo_context_text)
-        plan_output = await _stream_agent(plan_prompt, provider, ticket_id, emit)
+        plan_output = await _stream_agent(plan_prompt, provider, ticket_id, emit, phase="analyze_plan")
         _validate_plan(plan_output, ticket)
         tasks = _parse_task_list(plan_output)
         db.update_ticket(ticket_id, tasks_json=json.dumps(tasks))
@@ -158,23 +198,31 @@ async def run_ticket(
         # Implement
         await milestone("implement", "running")
         impl_prompt = jira_implement_prompt(ticket, repo_context_text, plan_output)
-        impl_output = await _stream_agent(impl_prompt, provider, ticket_id, emit)
+        impl_output = await _stream_agent(impl_prompt, provider, ticket_id, emit, phase="implement")
         full_output = plan_output + "\n\n---\n\n# Implementation\n\n" + impl_output
 
+        patches = parse_code_blocks(impl_output) or parse_code_blocks(full_output)
+        if not patches:
+            await emit("thinking", AGENT, json.dumps({
+                "phase": "implement",
+                "message": "No code blocks found — retrying with stricter format instructions…",
+            }), ticket_id)
+            retry_prompt = jira_implement_retry_prompt(ticket, plan_output)
+            retry_output = await _stream_agent(
+                retry_prompt, provider, ticket_id, emit, phase="implement",
+            )
+            impl_output = impl_output + "\n\n---\n\n# Retry (code files)\n\n" + retry_output
+            full_output = plan_output + "\n\n---\n\n# Implementation\n\n" + impl_output
+            patches = parse_code_blocks(retry_output) or parse_code_blocks(impl_output) or parse_code_blocks(full_output)
+
         tasks = _parse_task_list(full_output) or tasks
-        db.update_ticket(
-            ticket_id,
-            status="done",
-            output=full_output,
-            tasks_json=json.dumps(tasks),
-        )
+        db.update_ticket(ticket_id, output=full_output, tasks_json=json.dumps(tasks))
         db.save_artifact(project["id"], f"{AGENT}:{ticket_id}", f"{ticket_row.get('ticket_key', ticket_id)}.md", full_output)
         await emit("tasks", AGENT, json.dumps(tasks), ticket_id)
         await milestone("implement", "done")
 
         # Apply patches to worktree
         await milestone("apply_patches", "running")
-        patches = parse_code_blocks(impl_output) or parse_code_blocks(full_output)
         if not patches:
             raise RuntimeError(
                 "No code file blocks found in agent output. "
@@ -193,7 +241,7 @@ async def run_ticket(
             body=full_output[:12000],
             jira_url=ticket.get("jira_url") or "",
         )
-        db.update_ticket(ticket_id, pr_url=pr_url)
+        db.update_ticket(ticket_id, pr_url=pr_url, status="done")
         await milestone("commit_push", "done", branch)
         await milestone("create_pr", "done", pr_url)
         await emit("pr_created", AGENT, pr_url, ticket_id)
@@ -202,7 +250,13 @@ async def run_ticket(
         await emit("ticket_done", AGENT, f"PR opened: {pr_url}", ticket_id)
 
     except Exception as e:
-        db.update_ticket(ticket_id, status="error", output=str(e))
+        err = str(e)
+        existing = db.get_ticket(ticket_id) or {}
+        preserved = (existing.get("output") or "").strip()
+        output = preserved if preserved else err
+        if preserved and preserved != err:
+            output = preserved + f"\n\n---\n\n**Error:** {err}"
+        db.update_ticket(ticket_id, status="error", output=output)
         await emit("error", AGENT, f"❌ {ticket.get('key', ticket_id)} failed: {e}", ticket_id)
         raise
 

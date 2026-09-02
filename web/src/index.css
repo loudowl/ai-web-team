@@ -363,6 +363,42 @@ textarea.input { height: 120px; line-height: 22px; resize: vertical; }
 .memory-model-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .memory-model-size { color: var(--blue); flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+.thinking-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: rgba(210, 153, 34, 0.08);
+  border: 1px solid rgba(210, 153, 34, 0.35);
+  border-radius: 10px;
+}
+.thinking-indicator.compact { margin-bottom: 12px; }
+.thinking-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d29922;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.thinking-dot.pulse, .milestone-dot.pulse {
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}
+.milestone-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.thinking-title { font-size: 12px; font-weight: 700; color: #d29922; }
+.thinking-elapsed { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.thinking-message { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
 /* ── Spinner ───────────────────────────────────────────────────────────── */
 .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25);
   border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }

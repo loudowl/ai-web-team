@@ -1,5 +1,6 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
+import ThinkingIndicator from './ThinkingIndicator';
 
 const SYSTEM_META = { label: 'System', icon: '⚙️', color: '#8b949e' };
 
@@ -53,10 +54,18 @@ function StreamingOutput({ agentKey }) {
 }
 
 export default function ActivityFeed() {
-  const { feedMessages, activeAgent, agentStates } = useProjectStore();
+  const { feedMessages, activeAgent, agentStates, activeTicketId, ticketStates } = useProjectStore();
   const endRef = useRef(null);
+  const [, tick] = useState(0);
 
   const streamingLen = activeAgent ? agentStates[activeAgent]?.output.length : 0;
+  const activeTicket = activeTicketId ? ticketStates[activeTicketId] : null;
+
+  useEffect(() => {
+    if (!activeTicket?.thinkingSince) return undefined;
+    const id = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [activeTicket?.thinkingSince]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,6 +78,9 @@ export default function ActivityFeed() {
         {feedMessages.map(item => (
           <FeedItem key={String(item.id)} message={item} />
         ))}
+        {activeTicketId && (activeTicket?.status === 'running' || activeTicket?.active) && (
+          <ThinkingIndicator ticketId={activeTicketId} compact />
+        )}
         {activeAgent ? <StreamingOutput agentKey={activeAgent} /> : null}
         <div ref={endRef} />
       </div>
