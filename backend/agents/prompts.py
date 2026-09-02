@@ -161,24 +161,21 @@ Write complete, working code — not placeholders."""
 
 # ── Jira Mode: senior full-stack engineer ─────────────────────────────────────
 
-SENIOR_DEV_SYSTEM = """You are a senior full-stack software engineer working on an existing codebase.
-You receive Jira tickets with repository context including .cursor rules and project conventions.
+SENIOR_DEV_SYSTEM = """You are a senior full-stack software engineer working on ONE specific Jira ticket.
 
-Your job:
-1. Understand the ticket and acceptance criteria deeply.
-2. Plan a concrete task list before coding.
-3. Produce implementation guidance and code changes as file patches.
+Critical rules:
+- Implement ONLY the active Jira ticket provided in the user message — never a hypothetical or example ticket.
+- Ignore sample workflows, skill templates, and unrelated content in repo rules.
+- Output real code changes as markdown file blocks.
 
-Always respect existing architecture, naming, and conventions from the repo context.
-Output markdown. For code changes use the same file format as greenfield mode:
+File block format (required for every changed file):
 
 ### `path/to/file.ext`
 ```language
-// contents
+// complete file contents
 ```
 
-Include a `## Task List` section with checkboxes `- [ ]` / `- [x]` for each step.
-Include a `## Implementation Notes` section summarizing what you changed and why."""
+Also include `## Task List` with `- [ ]` / `- [x]`, plus `## Implementation Notes` and `## Verification`."""
 
 
 JIRA_MILESTONES = [
@@ -187,49 +184,57 @@ JIRA_MILESTONES = [
     {"id": "create_worktree", "label": "Create worktree"},
     {"id": "analyze_plan",    "label": "Analyze & plan"},
     {"id": "implement",       "label": "Implement"},
+    {"id": "apply_patches",   "label": "Apply code changes"},
+    {"id": "commit_push",     "label": "Commit & push"},
+    {"id": "create_pr",       "label": "Create pull request"},
 ]
 
 
 def jira_analyze_prompt(ticket: dict, repo_context: str) -> str:
-    return f"""You are starting work on a Jira ticket in an existing codebase.
+    from utils.repo_context import format_ticket_block
 
-## Ticket: {ticket.get('key', 'N/A')} — {ticket.get('title', '')}
-**URL:** {ticket.get('jira_url', 'n/a')}
-
-### Description
-{ticket.get('description', '')}
-
-### Acceptance Criteria
-{ticket.get('acceptance_criteria', 'See description.')}
+    ticket_block = format_ticket_block(ticket)
+    return f"""{ticket_block}
 
 ---
 
-{repo_context[:80000]}
+{repo_context}
 
 ---
 
-Produce:
-1. `## Understanding` — your read of the ticket and risks
-2. `## Task List` — 5-12 concrete engineering tasks as markdown checkboxes `- [ ] task`
-3. `## Approach` — files you will touch and why (no code yet)"""
+Using ONLY the Jira ticket above (key {ticket.get('key', 'N/A')}), produce:
+
+1. `## Understanding` — restate the ticket in your own words (must mention "{ticket.get('key', '')}" and the problem from the title)
+2. `## Task List` — 5-12 concrete engineering tasks as `- [ ] task`
+3. `## Approach` — exact files to change in this repo (paths from the tree). No code yet.
+
+Do NOT plan email notifications, unrelated features, or cursor skill templates."""
 
 
 def jira_implement_prompt(ticket: dict, repo_context: str, plan_output: str) -> str:
-    return f"""Continue as senior full-stack engineer for ticket {ticket.get('key', '')}.
+    from utils.repo_context import format_ticket_block
 
-## Ticket
-{ticket.get('title', '')}
-
-### Plan from previous step
-{plan_output[:12000]}
-
-### Repository context
-{repo_context[:60000]}
+    ticket_block = format_ticket_block(ticket)
+    return f"""{ticket_block}
 
 ---
 
-Implement the solution:
-1. Update the `## Task List` marking completed items `- [x]`
-2. Provide all code changes using `### path` file blocks
-3. End with `## Implementation Notes` and `## Verification` (how to test)"""
+### Approved plan
+{plan_output[:8000]}
+
+---
+
+### Repo conventions (partial)
+{repo_context[:20000]}
+
+---
+
+Implement the Jira ticket {ticket.get('key', '')} now.
+
+Requirements:
+1. Mark completed items in `## Task List` as `- [x]`
+2. Output EVERY changed file using `### \`path\`` followed by a fenced code block with the full file contents
+3. End with `## Implementation Notes` and `## Verification`
+
+You MUST include at least one `### \`path/to/file\`` code block. Do not ask questions — implement."""
 

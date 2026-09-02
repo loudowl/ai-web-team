@@ -80,6 +80,10 @@ def _migrate(c):
     if "repo_context_path" not in cols:
         c.execute("ALTER TABLE projects ADD COLUMN repo_context_path TEXT")
 
+    ticket_cols = {row[1] for row in c.execute("PRAGMA table_info(tickets)").fetchall()}
+    if "pr_url" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN pr_url TEXT")
+
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
@@ -121,6 +125,18 @@ def update_project(project_id: str, **kwargs):
     vals = list(kwargs.values()) + [project_id]
     with _conn() as c:
         c.execute(f"UPDATE projects SET {sets} WHERE id=?", vals)
+
+
+def delete_project(project_id: str) -> bool:
+    with _conn() as c:
+        row = c.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone()
+        if not row:
+            return False
+        c.execute("DELETE FROM tickets WHERE project_id=?", (project_id,))
+        c.execute("DELETE FROM agent_runs WHERE project_id=?", (project_id,))
+        c.execute("DELETE FROM artifacts WHERE project_id=?", (project_id,))
+        c.execute("DELETE FROM projects WHERE id=?", (project_id,))
+    return True
 
 
 # ── Agent runs ────────────────────────────────────────────────────────────────

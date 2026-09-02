@@ -10,8 +10,11 @@ import config
 import database as db
 from agents.jira_runner import ingest_tickets
 from utils.github_push import push_project
+from utils.git_worktree import remove_worktree
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+DELETABLE_STATUSES = frozenset({"pending", "error", "done"})
 
 
 class TicketInput(BaseModel):
@@ -49,6 +52,9 @@ def create_project(req: CreateProjectRequest):
         "ollama":    config.OLLAMA_MODEL,
     }.get(req.provider, config.OLLAMA_MODEL)
 
+    if req.mode == "jira" and req.provider == "ollama" and not req.model:
+        model = config.SENIOR_DEV_MODEL or model
+
     repo_path = req.repo_context_path or config.REPO_CONTEXT_PATH
     if req.mode == "jira" and not repo_path:
         raise HTTPException(status_code=400, detail="repo_context_path is required for Jira mode")
@@ -77,6 +83,32 @@ def get_project(project_id: str):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: str):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project["status"] not in DELETABLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete a {project['status']} session. Only pending, error, or done sessions can be deleted.",
+        )
+
+    if project.get("mode") == "jira":
+        repo_path = project.get("repo_context_path")
+        for ticket in db.list_tickets(project_id):
+            wt = ticket.get("worktree_path")
+            if wt:
+                try:
+                    remove_worktree(wt, repo_path)
+                except Exception:
+                    pass
+
+    if not db.delete_project(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"deleted": project_id}
 
 
 @router.patch("/{project_id}")

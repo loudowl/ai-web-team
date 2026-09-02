@@ -16,6 +16,9 @@ const JIRA_MILESTONES = [
   { id: 'create_worktree',  label: 'Create worktree' },
   { id: 'analyze_plan',     label: 'Analyze & plan' },
   { id: 'implement',        label: 'Implement' },
+  { id: 'apply_patches',    label: 'Apply code changes' },
+  { id: 'commit_push',      label: 'Commit & push' },
+  { id: 'create_pr',        label: 'Create pull request' },
 ];
 
 const initialAgentState = () =>
@@ -26,6 +29,7 @@ const initialAgentState = () =>
 const initialTicketState = () => ({
   status: 'pending',
   output: '',
+  prUrl: '',
   tasks: [],
   milestones: Object.fromEntries(
     JIRA_MILESTONES.map(m => [m.id, { status: 'pending', detail: '' }])
@@ -57,6 +61,7 @@ export const useProjectStore = create((set, get) => ({
         ...initialTicketState(),
         status: t.status || 'pending',
         output: t.output || '',
+        prUrl: t.pr_url || '',
         tasks: t.tasks_json ? JSON.parse(t.tasks_json) : [],
       };
     }
@@ -97,6 +102,8 @@ export const useProjectStore = create((set, get) => ({
         } else if (type === 'agent_done' || type === 'ticket_done') {
           ts.status = 'done';
           ts.active = false;
+        } else if (type === 'pr_created') {
+          ts.prUrl = data;
         } else if (type === 'error') {
           ts.status = 'error';
           ts.active = false;

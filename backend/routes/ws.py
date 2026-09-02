@@ -50,6 +50,13 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
                             "ticket_id": t["id"],
                             "data": t["output"],
                         }))
+                    if t.get("pr_url"):
+                        await send(json.dumps({
+                            "type": "pr_created",
+                            "agent": "senior_dev",
+                            "ticket_id": t["id"],
+                            "data": t["pr_url"],
+                        }))
                     if t.get("tasks_json"):
                         await send(json.dumps({
                             "type": "tasks",

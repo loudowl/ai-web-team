@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Plus, RefreshCw } from 'lucide-react';
-import { listProjects } from '../services/api';
+import { Settings, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { listProjects, deleteProject } from '../services/api';
 import { useProjectStore } from '../store/projectStore';
 
 const STATUS_CHIP = {
@@ -11,27 +11,46 @@ const STATUS_CHIP = {
   error:   { color: '#f85149', bg: '#2d0f0f', label: 'Error' },
 };
 
-function ProjectCard({ project, onClick }) {
+const DELETABLE_STATUSES = new Set(['pending', 'error', 'done']);
+
+function ProjectCard({ project, onClick, onDelete, deleting }) {
   const chip = STATUS_CHIP[project.status] || STATUS_CHIP.pending;
+  const canDelete = DELETABLE_STATUSES.has(project.status);
+
   return (
-    <button className="card" onClick={onClick}>
-      <div className="card-top">
-        <span className="card-name">{project.name}</span>
-        <span className="chip" style={{ background: chip.bg, borderColor: chip.color, color: chip.color }}>
-          {chip.label}
-        </span>
-      </div>
-      <div className="card-brief">{project.brief}</div>
-      <div className="card-meta">
-        <span className="meta-text">
-          {(project.mode === 'jira' ? 'JIRA' : project.provider?.toUpperCase())} · {project.model}
-        </span>
-        <span className="meta-text">{new Date(project.created_at).toLocaleDateString()}</span>
-      </div>
-      {project.github_url ? (
-        <div className="github-link">⎋ {project.github_url}</div>
-      ) : null}
-    </button>
+    <div className="card-wrap">
+      <button className="card" onClick={onClick}>
+        <div className="card-top">
+          <span className="card-name">{project.name}</span>
+          <span className="chip" style={{ background: chip.bg, borderColor: chip.color, color: chip.color }}>
+            {chip.label}
+          </span>
+        </div>
+        <div className="card-brief">{project.brief}</div>
+        <div className="card-meta">
+          <span className="meta-text">
+            {(project.mode === 'jira' ? 'JIRA' : project.provider?.toUpperCase())} · {project.model}
+          </span>
+          <span className="meta-text">{new Date(project.created_at).toLocaleDateString()}</span>
+        </div>
+        {project.github_url ? (
+          <div className="github-link">⎋ {project.github_url}</div>
+        ) : null}
+      </button>
+      {canDelete && (
+        <button
+          className="card-delete"
+          title="Delete session"
+          disabled={deleting}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(project);
+          }}
+        >
+          <Trash2 size={18} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -40,6 +59,7 @@ export default function HomePage() {
   const { setProjects, setActiveProject, resetRun } = useProjectStore();
   const [projects, setLocal] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +84,19 @@ export default function HomePage() {
     setActiveProject(project);
     resetRun();
     navigate(`/project/${project.id}`);
+  };
+
+  const handleDelete = async (project) => {
+    if (!window.confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+    setDeletingId(project.id);
+    try {
+      await deleteProject(project.id);
+      await load();
+    } catch (e) {
+      window.alert(e.response?.data?.detail || e.message || 'Failed to delete session');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -93,7 +126,13 @@ export default function HomePage() {
           </div>
         ) : (
           projects.map(item => (
-            <ProjectCard key={item.id} project={item} onClick={() => openProject(item)} />
+            <ProjectCard
+              key={item.id}
+              project={item}
+              onClick={() => openProject(item)}
+              onDelete={handleDelete}
+              deleting={deletingId === item.id}
+            />
           ))
         )}
       </div>

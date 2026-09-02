@@ -15,6 +15,8 @@ OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OPENAI_MODEL       = os.getenv("OPENAI_MODEL", "gpt-5.6")
 ANTHROPIC_MODEL    = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 OLLAMA_MODEL       = os.getenv("OLLAMA_MODEL", "llama3.2")
+SENIOR_DEV_MODEL   = os.getenv("SENIOR_DEV_MODEL", "")
+OLLAMA_NUM_CTX     = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
 
 # Per-agent model overrides (optional — falls back to provider defaults)
 AGENT_MODELS = {
@@ -22,7 +24,7 @@ AGENT_MODELS = {
     "designer":   os.getenv("DESIGNER_MODEL",   ""),
     "architect":  os.getenv("ARCHITECT_MODEL",  ""),
     "developer":  os.getenv("DEVELOPER_MODEL",  ""),
-    "senior_dev": os.getenv("SENIOR_DEV_MODEL", ""),
+    "senior_dev": SENIOR_DEV_MODEL,
 }
 
 # Per-agent reasoning effort for OpenAI reasoning models (Responses API).
@@ -48,6 +50,11 @@ JIRA_API_TOKEN     = os.getenv("JIRA_API_TOKEN", "")
 WORKTREE_BASE        = os.getenv("WORKTREE_BASE", "data/worktrees")
 # Default repo context root when user does not pass one per project
 REPO_CONTEXT_PATH    = os.getenv("REPO_CONTEXT_PATH", "")
+
+# Jira PR workflow
+GITHUB_BASE_BRANCH   = os.getenv("GITHUB_BASE_BRANCH", "")   # auto-detect from origin if empty
+JIRA_BRANCH_PREFIX   = os.getenv("JIRA_BRANCH_PREFIX", "codex")
+JIRA_BRANCH_SUFFIX   = os.getenv("JIRA_BRANCH_SUFFIX", "")
 
 # ── GitHub ─────────────────────────────────────────────────────────────────────
 GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")

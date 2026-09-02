@@ -50,6 +50,11 @@ export default function TicketBoard({ onTicketPress }) {
                   Tasks: {doneTasks}/{totalTasks}
                 </div>
               )}
+              {(t.pr_url || ts.prUrl) && (
+                <div className="meta-text" style={{ marginTop: 6, color: '#58a6ff' }}>
+                  PR ready
+                </div>
+              )}
               {ts.active && (
                 <div className="kanban-progress" style={{ marginTop: 8 }}>
                   <div className="kanban-progress-fill" style={{ background: '#58a6ff' }} />

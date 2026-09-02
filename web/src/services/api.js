@@ -17,6 +17,9 @@ export const listTickets = (projectId) =>
 export const getProject = (id) =>
   api.get(`/api/projects/${id}`).then(r => r.data);
 
+export const deleteProject = (id) =>
+  api.delete(`/api/projects/${id}`).then(r => r.data);
+
 export const getAgentRuns = (id) =>
   api.get(`/api/projects/${id}/agents`).then(r => r.data.agents);
 

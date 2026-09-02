@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Settings, FileText, Github, ExternalLink, X } from 'lucide-react';
+import { ChevronLeft, Settings, FileText, Github, ExternalLink, X, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -8,7 +8,7 @@ import AgentKanban from '../components/AgentKanban';
 import ActivityFeed from '../components/ActivityFeed';
 import TicketBoard from '../components/TicketBoard';
 import TicketModal from '../components/TicketModal';
-import { connectWS, getProject, pushToGitHub, listTickets } from '../services/api';
+import { connectWS, getProject, pushToGitHub, listTickets, deleteProject } from '../services/api';
 import { useProjectStore } from '../store/projectStore';
 
 export default function ProjectPage() {
@@ -18,6 +18,7 @@ export default function ProjectPage() {
   const {
     activeProject, setActiveProject,
     agentStates, handleWsEvent, setWs, setTickets,
+    tickets, ticketStates,
     AGENTS, AGENT_META,
   } = useProjectStore();
 
@@ -26,8 +27,10 @@ export default function ProjectPage() {
   const [modalAgent, setModalAgent]   = useState(null);
   const [modalTicketId, setModalTicketId] = useState(null);
   const [pushing, setPushing]         = useState(false);
+  const [deleting, setDeleting]       = useState(false);
 
   const isJira = project?.mode === 'jira';
+  const canDelete = ['pending', 'error', 'done'].includes(project?.status);
 
   useEffect(() => {
     let mounted = true;
@@ -64,6 +67,22 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  const handleDelete = async () => {
+    if (!canDelete || !project) return;
+    if (!window.confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+
+    setDeleting(true);
+    try {
+      wsRef.current?.close();
+      await deleteProject(projectId);
+      navigate('/', { replace: true });
+    } catch (e) {
+      window.alert(e.response?.data?.detail || e.message || 'Failed to delete session');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handlePushToGitHub = async () => {
     if (isJira) {
       window.alert('GitHub push is not yet supported for Jira mode. Work happens in local worktrees.');
@@ -98,10 +117,19 @@ export default function ProjectPage() {
   const isDone    = project?.status === 'done';
   const isRunning = project?.status === 'running';
   const dotColor  = isRunning ? '#d29922' : isDone ? '#3fb950' : '#8b949e';
+  const jiraPrUrl = isJira
+    ? (tickets.find(t => t.pr_url)?.pr_url
+      || tickets.map(t => ticketStates[t.id]?.prUrl).find(Boolean))
+    : null;
 
   const openViewOutput = () => {
     if (isJira) {
       const { tickets, ticketStates } = useProjectStore.getState();
+      const withPr = tickets.find(t => t.pr_url || ticketStates[t.id]?.prUrl);
+      if (withPr?.pr_url || ticketStates[withPr?.id]?.prUrl) {
+        window.open(withPr.pr_url || ticketStates[withPr.id].prUrl, '_blank', 'noopener');
+        return;
+      }
       const active = tickets.find(t => ticketStates[t.id]?.output);
       if (active) setModalTicketId(active.id);
       return;
@@ -121,9 +149,16 @@ export default function ProjectPage() {
           <span className="status-dot" style={{ background: dotColor }} />
           {isJira && <span className="chip" style={{ marginLeft: 8, fontSize: 9, color: '#58a6ff', borderColor: '#58a6ff' }}>JIRA</span>}
         </div>
-        <button className="icon-btn" onClick={() => navigate('/settings')}>
-          <Settings size={20} />
-        </button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {canDelete && (
+            <button className="icon-btn" onClick={handleDelete} disabled={deleting} title="Delete session">
+              <Trash2 size={20} color="#f85149" />
+            </button>
+          )}
+          <button className="icon-btn" onClick={() => navigate('/settings')}>
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
 
       {isJira ? (
@@ -140,7 +175,7 @@ export default function ProjectPage() {
           View Output
         </button>
 
-        {!isJira && (
+        {!isJira ? (
           <button
             className={`btn-push${(!isDone && !project?.github_url) ? ' btn-disabled' : ''}`}
             onClick={handlePushToGitHub}
@@ -155,7 +190,12 @@ export default function ProjectPage() {
               </>
             )}
           </button>
-        )}
+        ) : jiraPrUrl ? (
+          <button className="btn-push" onClick={() => window.open(jiraPrUrl, '_blank', 'noopener')}>
+            <ExternalLink size={18} />
+            View Pull Request
+          </button>
+        ) : null}
       </div>
 
       {modalTicketId && (

@@ -23,6 +23,17 @@ export default function TicketModal({ ticketId, onClose }) {
         </div>
 
         <div style={{ padding: '12px 16px', background: '#161b22', borderBottom: '1px solid #30363d' }}>
+          {(ts.prUrl || ticket.pr_url) && (
+            <a
+              href={ts.prUrl || ticket.pr_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-outline"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12, textDecoration: 'none' }}
+            >
+              View pull request
+            </a>
+          )}
           <div className="section-label" style={{ margin: '0 0 8px' }}>MILESTONES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {JIRA_MILESTONES.map(m => {

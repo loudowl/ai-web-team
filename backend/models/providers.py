@@ -80,17 +80,23 @@ def stream_ollama(prompt: str, agent: str = "pm", system: str = "") -> Generator
     import json
     model = _resolve_model(agent, "ollama")
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
+    temperature = 0.2 if agent == "senior_dev" else 0.6
+    timeout = 600 if agent == "senior_dev" else 180
     payload = {
         "model":   model,
         "prompt":  full_prompt,
         "stream":  True,
-        "options": {"temperature": 0.6, "num_predict": config.MAX_TOKENS_AGENT},
+        "options": {
+            "temperature": temperature,
+            "num_predict": config.MAX_TOKENS_AGENT,
+            "num_ctx": config.OLLAMA_NUM_CTX,
+        },
     }
     resp = requests.post(
         f"{config.OLLAMA_BASE_URL}/api/generate",
         json=payload,
         stream=True,
-        timeout=180,
+        timeout=timeout,
     )
     resp.raise_for_status()
     for line in resp.iter_lines():

@@ -22,8 +22,29 @@ from agents.prompts import (
 from utils.repo_context import build_repo_context, list_repos
 from utils.git_worktree import ensure_worktree
 from utils.jira_client import fetch_ticket
+from utils.patch_apply import apply_patches, parse_code_blocks
+from utils.github_pr import publish_ticket_changes
 
 AGENT = "senior_dev"
+
+
+def _validate_plan(plan_output: str, ticket: dict) -> None:
+    """Fail fast when the model clearly ignored the Jira ticket."""
+    text = plan_output.lower()
+    key = (ticket.get("key") or "").lower()
+    if key and key in text:
+        return
+
+    title = ticket.get("title") or ""
+    keywords = [w.lower() for w in re.findall(r"[A-Za-z]{5,}", title)][:6]
+    hits = sum(1 for w in keywords if w in text)
+    if hits >= 2:
+        return
+
+    raise RuntimeError(
+        f"Plan does not reference ticket {ticket.get('key', '')} or its topic. "
+        "The model likely lost context — delete this session and retry."
+    )
 
 
 def _parse_task_list(markdown: str) -> List[Dict]:
@@ -72,13 +93,23 @@ async def _stream_agent(
 async def run_ticket(
     project: dict,
     ticket_row: dict,
-    repo_context_text: str,
-    repo_root: str,
     send: Callable[[str], Awaitable[None]],
 ):
     ticket_id = ticket_row["id"]
     provider = project["provider"]
-    model = project.get("model") or ""
+
+    ticket = {
+        "key": ticket_row.get("ticket_key"),
+        "title": ticket_row.get("title"),
+        "description": ticket_row.get("description"),
+        "acceptance_criteria": ticket_row.get("acceptance_criteria"),
+        "jira_url": ticket_row.get("jira_url"),
+    }
+
+    repo_path = project.get("repo_context_path") or config.REPO_CONTEXT_PATH
+    ctx = build_repo_context(repo_path, ticket=ticket)
+    repo_context_text = ctx["context_text"]
+    repo_root = ctx["root"]
 
     async def emit(type_: str, agent: str, data: str, tid: str = None):
         payload = {"type": type_, "agent": agent, "data": data, "ticket_id": tid or ticket_id}
@@ -93,16 +124,8 @@ async def run_ticket(
             "detail": detail,
         }), ticket_id)
 
-    ticket = {
-        "key": ticket_row.get("ticket_key"),
-        "title": ticket_row.get("title"),
-        "description": ticket_row.get("description"),
-        "acceptance_criteria": ticket_row.get("acceptance_criteria"),
-        "jira_url": ticket_row.get("jira_url"),
-    }
-
     try:
-        db.update_ticket(ticket_id, status="running")
+        db.update_ticket(ticket_id, status="running", output="")
         await emit("ticket_start", AGENT, f"Starting {ticket.get('key', ticket_id)}…", ticket_id)
         await emit("agent_start", AGENT, f"Senior Dev → {ticket.get('title', '')}", ticket_id)
 
@@ -111,7 +134,7 @@ async def run_ticket(
 
         # Worktree
         await milestone("create_worktree", "running", "Creating worktree…")
-        repos = list_repos(__import__("pathlib").Path(repo_root))
+        repos = list_repos(__import__("pathlib").Path(repo_root).resolve())
         primary_repo = str(repos[0]) if repos else repo_root
         wt_path = ensure_worktree(
             primary_repo,
@@ -126,6 +149,7 @@ async def run_ticket(
         await milestone("analyze_plan", "running")
         plan_prompt = jira_analyze_prompt(ticket, repo_context_text)
         plan_output = await _stream_agent(plan_prompt, provider, ticket_id, emit)
+        _validate_plan(plan_output, ticket)
         tasks = _parse_task_list(plan_output)
         db.update_ticket(ticket_id, tasks_json=json.dumps(tasks))
         await emit("tasks", AGENT, json.dumps(tasks), ticket_id)
@@ -147,8 +171,35 @@ async def run_ticket(
         db.save_artifact(project["id"], f"{AGENT}:{ticket_id}", f"{ticket_row.get('ticket_key', ticket_id)}.md", full_output)
         await emit("tasks", AGENT, json.dumps(tasks), ticket_id)
         await milestone("implement", "done")
+
+        # Apply patches to worktree
+        await milestone("apply_patches", "running")
+        patches = parse_code_blocks(impl_output) or parse_code_blocks(full_output)
+        if not patches:
+            raise RuntimeError(
+                "No code file blocks found in agent output. "
+                "Expected ### `path/to/file` blocks with code fences."
+            )
+        written = apply_patches(wt_path, patches)
+        await milestone("apply_patches", "done", f"{len(written)} file(s)")
+
+        # Commit, push, and open PR
+        await milestone("commit_push", "running")
+        branch, pr_url = publish_ticket_changes(
+            repo_path=primary_repo,
+            worktree_path=wt_path,
+            ticket_key=ticket.get("key") or ticket_id,
+            title=ticket.get("title") or "Jira ticket fix",
+            body=full_output[:12000],
+            jira_url=ticket.get("jira_url") or "",
+        )
+        db.update_ticket(ticket_id, pr_url=pr_url)
+        await milestone("commit_push", "done", branch)
+        await milestone("create_pr", "done", pr_url)
+        await emit("pr_created", AGENT, pr_url, ticket_id)
+
         await emit("agent_done", AGENT, f"Finished {ticket.get('key', ticket_id)}", ticket_id)
-        await emit("ticket_done", AGENT, f"Ticket {ticket.get('key', ticket_id)} complete", ticket_id)
+        await emit("ticket_done", AGENT, f"PR opened: {pr_url}", ticket_id)
 
     except Exception as e:
         db.update_ticket(ticket_id, status="error", output=str(e))
@@ -170,24 +221,26 @@ async def run_jira_pipeline(
         return
 
     repo_path = project.get("repo_context_path") or config.REPO_CONTEXT_PATH
-    ctx = build_repo_context(repo_path)
-    repo_context_text = ctx["context_text"]
+    if not repo_path:
+        await send(json.dumps({"type": "error", "agent": "system", "data": "repo_context_path is required"}))
+        return
 
-    # Pick best Ollama model if provider is ollama
+    # Pick best coding model for Jira work
     if project["provider"] == "ollama":
-        if project.get("model"):
-            config.AGENT_MODELS["senior_dev"] = project["model"]
-        else:
-            best = pick_best_installed(ollama_list_models())
-            if best:
-                config.AGENT_MODELS["senior_dev"] = best
-                db.update_project(project_id, model=best)
+        model = (
+            config.SENIOR_DEV_MODEL
+            or config.AGENT_MODELS.get("senior_dev")
+            or pick_best_installed(ollama_list_models())
+            or config.OLLAMA_MODEL
+        )
+        config.AGENT_MODELS["senior_dev"] = model
+        db.update_project(project_id, model=model)
 
     db.update_project(project_id, status="running")
 
     async def run_one(ticket_row):
         try:
-            await run_ticket(project, ticket_row, repo_context_text, ctx["root"], send)
+            await run_ticket(project, ticket_row, send)
         except Exception:
             pass  # error already emitted
 

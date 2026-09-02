@@ -2,25 +2,37 @@
 Git worktree management — one isolated worktree per Jira ticket for parallel agents.
 """
 
-import os
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 import config
+from utils.github_pr import branch_name, detect_base_branch
 
 
-def _run(cmd: list, cwd: str = None) -> str:
+def _run(cmd: list, cwd: str = None, timeout: int = 120) -> str:
     result = subprocess.run(
         cmd,
         cwd=cwd,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=timeout,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"git failed: {cmd}")
     return result.stdout.strip()
+
+
+def worktree_base() -> Path:
+    base = Path(config.WORKTREE_BASE)
+    if not base.is_absolute():
+        base = Path(__file__).resolve().parent.parent / base
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def worktree_dest(project_id: str, ticket_id: str) -> Path:
+    return (worktree_base() / project_id / ticket_id).resolve()
 
 
 def ensure_worktree(
@@ -34,31 +46,43 @@ def ensure_worktree(
     Layout: {WORKTREE_BASE}/{project_id}/{ticket_id}/
     """
     repo = Path(repo_path).resolve()
-    if not (repo / ".git").exists():
-        # Non-git tree — use a copy directory name without git worktree
-        base = Path(config.WORKTREE_BASE) / project_id / ticket_id
-        base.mkdir(parents=True, exist_ok=True)
-        return str(base)
+    dest = worktree_dest(project_id, ticket_id)
 
-    branch = f"jira/{project_id}/{ticket_key or ticket_id}"
-    dest = Path(config.WORKTREE_BASE) / project_id / ticket_id
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not (repo / ".git").exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        return str(dest)
 
     if dest.exists() and any(dest.iterdir()):
         return str(dest)
 
-    dest.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.rmdir()
 
-    # Prune stale worktree registrations
+    branch = branch_name(ticket_key or ticket_id)
+    base_branch = detect_base_branch(str(repo))
+
+    try:
+        _run(["git", "fetch", "origin", base_branch], cwd=str(repo), timeout=180)
+    except RuntimeError:
+        pass
+
     try:
         _run(["git", "worktree", "prune"], cwd=str(repo))
     except RuntimeError:
         pass
 
+    start_point = f"origin/{base_branch}"
     try:
-        _run(["git", "worktree", "add", "-B", branch, str(dest), "HEAD"], cwd=str(repo))
+        _run(["git", "rev-parse", start_point], cwd=str(repo))
     except RuntimeError:
-        # Branch may exist — try checkout existing
+        start_point = base_branch
+
+    try:
+        _run(
+            ["git", "worktree", "add", "-B", branch, str(dest), start_point],
+            cwd=str(repo),
+        )
+    except RuntimeError:
         try:
             _run(["git", "worktree", "add", str(dest), branch], cwd=str(repo))
         except RuntimeError as e:
@@ -69,12 +93,12 @@ def ensure_worktree(
 
 def remove_worktree(worktree_path: str, repo_path: str = None):
     """Best-effort cleanup."""
-    wt = Path(worktree_path)
+    wt = Path(worktree_path).resolve()
     if not wt.exists():
         return
-    if repo_path and Path(repo_path).joinpath(".git").exists():
+    if repo_path and Path(repo_path).resolve().joinpath(".git").exists():
         try:
-            _run(["git", "worktree", "remove", "--force", str(wt)], cwd=repo_path)
+            _run(["git", "worktree", "remove", "--force", str(wt)], cwd=str(Path(repo_path).resolve()))
             return
         except RuntimeError:
             pass
