@@ -5,6 +5,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model
+from models.coding_agents import (
+    get_recommended_models,
+    get_excluded_models,
+    pick_best_installed,
+    is_excluded_model,
+)
 import config
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -21,6 +27,31 @@ def list_models():
             "anthropic": {"available": bool(config.ANTHROPIC_API_KEY), "model": config.ANTHROPIC_MODEL},
             "ollama":    {"available": True,                           "model": config.OLLAMA_MODEL},
         }
+    }
+
+
+@router.get("/coding-agents")
+def list_coding_agents():
+    """Recommended open-weights coding models + what's installed locally."""
+    installed = ollama_list_models()
+    recommended = get_recommended_models()
+    excluded = get_excluded_models()
+    best = pick_best_installed(installed)
+
+    installed_clean = []
+    for m in installed:
+        name = m.get("name", "")
+        installed_clean.append({
+            **m,
+            "excluded": is_excluded_model(name),
+        })
+
+    return {
+        "recommended": recommended,
+        "excluded_by_policy": excluded,
+        "installed": installed_clean,
+        "best_for_jira_mode": best,
+        "jira_api_configured": bool(config.JIRA_BASE_URL and config.JIRA_EMAIL and config.JIRA_API_TOKEN),
     }
 
 

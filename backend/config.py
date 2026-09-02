@@ -22,6 +22,7 @@ AGENT_MODELS = {
     "designer":   os.getenv("DESIGNER_MODEL",   ""),
     "architect":  os.getenv("ARCHITECT_MODEL",  ""),
     "developer":  os.getenv("DEVELOPER_MODEL",  ""),
+    "senior_dev": os.getenv("SENIOR_DEV_MODEL", ""),
 }
 
 # Per-agent reasoning effort for OpenAI reasoning models (Responses API).
@@ -32,10 +33,21 @@ AGENT_REASONING_EFFORT = {
     "designer":   os.getenv("DESIGNER_EFFORT",  "medium"),
     "architect":  os.getenv("ARCHITECT_EFFORT", "high"),
     "developer":  os.getenv("DEVELOPER_EFFORT", "high"),
+    "senior_dev": os.getenv("SENIOR_DEV_EFFORT", "high"),
 }
 
 # Default provider: "openai" | "anthropic" | "ollama"
 DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "openai")
+
+# ── Jira Mode ─────────────────────────────────────────────────────────────────
+JIRA_BASE_URL      = os.getenv("JIRA_BASE_URL", "")          # e.g. https://yourorg.atlassian.net
+JIRA_EMAIL         = os.getenv("JIRA_EMAIL", "")
+JIRA_API_TOKEN     = os.getenv("JIRA_API_TOKEN", "")
+
+# Local git worktrees for parallel ticket work (one dir per project/ticket)
+WORKTREE_BASE        = os.getenv("WORKTREE_BASE", "data/worktrees")
+# Default repo context root when user does not pass one per project
+REPO_CONTEXT_PATH    = os.getenv("REPO_CONTEXT_PATH", "")
 
 # ── GitHub ─────────────────────────────────────────────────────────────────────
 GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")

@@ -1,22 +1,33 @@
 """REST routes for project CRUD."""
 
 import uuid
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 import config
 import database as db
+from agents.jira_runner import ingest_tickets
 from utils.github_push import push_project
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
+class TicketInput(BaseModel):
+    jira_url: Optional[str] = None
+    ticket_key: Optional[str] = None
+    manual: Optional[dict] = None  # { title, description, acceptance_criteria }
+
+
 class CreateProjectRequest(BaseModel):
     name: str
-    brief: str
+    brief: str = ""
     provider: str = "openai"   # openai | anthropic | ollama
     model: Optional[str] = None
+    mode: str = "greenfield"   # greenfield | jira
+    repo_context_path: Optional[str] = None
+    tickets: Optional[List[TicketInput]] = None
 
 
 class UpdateProjectRequest(BaseModel):
@@ -38,8 +49,26 @@ def create_project(req: CreateProjectRequest):
         "ollama":    config.OLLAMA_MODEL,
     }.get(req.provider, config.OLLAMA_MODEL)
 
-    project = db.create_project(project_id, req.name, req.brief, req.provider, model)
-    return project
+    repo_path = req.repo_context_path or config.REPO_CONTEXT_PATH
+    if req.mode == "jira" and not repo_path:
+        raise HTTPException(status_code=400, detail="repo_context_path is required for Jira mode")
+    if req.mode == "jira" and not req.tickets:
+        raise HTTPException(status_code=400, detail="At least one ticket is required for Jira mode")
+
+    brief = req.brief or (f"Jira mode — {len(req.tickets or [])} ticket(s)")
+
+    project = db.create_project(
+        project_id, req.name, brief, req.provider, model,
+        mode=req.mode, repo_context_path=repo_path,
+    )
+
+    if req.mode == "jira":
+        try:
+            ingest_tickets(project_id, [t.model_dump() for t in req.tickets])
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return db.get_project(project_id)
 
 
 @router.get("/{project_id}")
@@ -75,6 +104,14 @@ def get_agent_runs(project_id: str):
 def get_artifacts(project_id: str):
     artifacts = db.get_artifacts(project_id)
     return {"artifacts": artifacts}
+
+
+@router.get("/{project_id}/tickets")
+def get_tickets(project_id: str):
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"tickets": db.list_tickets(project_id)}
 
 
 @router.post("/{project_id}/push")
