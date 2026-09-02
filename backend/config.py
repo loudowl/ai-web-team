@@ -70,6 +70,9 @@ GITHUB_USERNAME    = os.getenv("GITHUB_USERNAME", "")
 
 # ── App ────────────────────────────────────────────────────────────────────────
 DB_PATH            = os.getenv("DB_PATH", "data/projects.db")
+PORT               = int(os.getenv("PORT", "3001"))
+# Uvicorn auto-reload when started via `python main.py` (disable during Jira runs).
+RELOAD             = os.getenv("RELOAD", "true").lower() in ("1", "true", "yes")
 # Reasoning models spend hidden tokens before visible output, so give the
 # response budget more headroom than the old chat-completions default.
 MAX_TOKENS_AGENT   = int(os.getenv("MAX_TOKENS_AGENT", "8192"))

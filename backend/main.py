@@ -1,13 +1,14 @@
 """ai-web-team backend — FastAPI entry point."""
 
-import os
+from pathlib import Path
+
+import config
+import database as db
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-import database as db
+from routes.models import router as models_router
 from routes.projects import router as projects_router
-from routes.models   import router as models_router
-from routes.ws       import router as ws_router
+from routes.ws import router as ws_router
 
 app = FastAPI(title="ai-web-team API", version="1.0.0")
 
@@ -36,16 +37,23 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-    reload = os.getenv("RELOAD", "true").lower() in ("1", "true", "yes")
+
+    backend_root = Path(__file__).resolve().parent
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=int(os.getenv("PORT", 3001)),
-        reload=reload,
-        # Single-level globs miss nested worktree files and trigger mid-run reloads.
+        port=config.PORT,
+        reload=config.RELOAD,
+        # Watch Python package dirs only — never data/worktrees (Jira agent writes files there).
+        reload_dirs=[
+            str(backend_root / "agents"),
+            str(backend_root / "routes"),
+            str(backend_root / "models"),
+            str(backend_root / "utils"),
+        ],
         reload_excludes=[
-            "**/data/worktrees/**",
-            "**/data/*.db",
-            "**/data/*.db-*",
+            "data/worktrees/**",
+            "data/*.db",
+            "data/*.db-*",
         ],
     )
