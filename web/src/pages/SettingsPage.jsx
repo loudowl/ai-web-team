@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Trash2 } from 'lucide-react';
 import { listModels, deleteModel, API_URL } from '../services/api';
+import OllamaMemoryMeter from '../components/OllamaMemoryMeter';
 
 function ModelRow({ model, onDelete }) {
   const sizeGB = model.size ? (model.size / 1e9).toFixed(1) + ' GB' : '';
@@ -117,6 +118,9 @@ export default function SettingsPage() {
             </span>
           </div>
         )) : loading ? <div className="center-row"><span className="spinner blue" /></div> : null}
+
+        <div className="section">Ollama Memory</div>
+        <OllamaMemoryMeter />
 
         <div className="section">Ollama Models</div>
         {loading ? (

@@ -1,5 +1,5 @@
 """
-Jira Mode runner — one senior_dev agent per ticket, parallel execution, milestone events.
+Jira Mode runner — one senior_dev agent per ticket (concurrency capped via JIRA_MAX_PARALLEL).
 """
 
 import asyncio
@@ -238,11 +238,14 @@ async def run_jira_pipeline(
 
     db.update_project(project_id, status="running")
 
+    sem = asyncio.Semaphore(config.JIRA_MAX_PARALLEL)
+
     async def run_one(ticket_row):
-        try:
-            await run_ticket(project, ticket_row, send)
-        except Exception:
-            pass  # error already emitted
+        async with sem:
+            try:
+                await run_ticket(project, ticket_row, send)
+            except Exception:
+                pass  # error already emitted
 
     await asyncio.gather(*[run_one(t) for t in tickets])
 

@@ -14,7 +14,7 @@ from utils.git_worktree import remove_worktree
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-DELETABLE_STATUSES = frozenset({"pending", "error", "done"})
+DELETABLE_STATUSES = frozenset({"pending", "running", "error", "done"})
 
 
 class TicketInput(BaseModel):
@@ -93,21 +93,26 @@ def delete_project(project_id: str):
     if project["status"] not in DELETABLE_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete a {project['status']} session. Only pending, error, or done sessions can be deleted.",
+            detail=f"Cannot delete a {project['status']} session.",
         )
 
+    worktrees = []
     if project.get("mode") == "jira":
         repo_path = project.get("repo_context_path")
         for ticket in db.list_tickets(project_id):
             wt = ticket.get("worktree_path")
             if wt:
-                try:
-                    remove_worktree(wt, repo_path)
-                except Exception:
-                    pass
+                worktrees.append((wt, repo_path))
 
     if not db.delete_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+
+    for wt, repo_path in worktrees:
+        try:
+            remove_worktree(wt, repo_path)
+        except Exception:
+            pass
+
     return {"deleted": project_id}
 
 

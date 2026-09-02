@@ -16,7 +16,15 @@ OPENAI_MODEL       = os.getenv("OPENAI_MODEL", "gpt-5.6")
 ANTHROPIC_MODEL    = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 OLLAMA_MODEL       = os.getenv("OLLAMA_MODEL", "llama3.2")
 SENIOR_DEV_MODEL   = os.getenv("SENIOR_DEV_MODEL", "")
-OLLAMA_NUM_CTX     = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
+# Context window — each doubling roughly doubles RAM while a model is loaded.
+# 8192 is fine for most Jira tickets; 32768 needs 32GB+ RAM with codestral.
+OLLAMA_NUM_CTX     = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+# Unload model after idle ("0" = immediately after each request). Ollama duration string or seconds.
+OLLAMA_KEEP_ALIVE  = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
+# Cap CPU threads for Ollama inference (empty = Ollama default).
+OLLAMA_NUM_THREAD  = int(os.getenv("OLLAMA_NUM_THREAD", "0")) or None
+# Jira tickets run in parallel by default on cloud APIs; keep local Ollama to one at a time.
+JIRA_MAX_PARALLEL  = max(1, int(os.getenv("JIRA_MAX_PARALLEL", "1")))
 
 # Per-agent model overrides (optional — falls back to provider defaults)
 AGENT_MODELS = {

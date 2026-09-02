@@ -342,6 +342,27 @@ textarea.input { height: 120px; line-height: 22px; resize: vertical; }
 .hint { font-size: 11px; color: var(--faint); margin-top: 8px; line-height: 16px; }
 .config-value { font-size: 13px; color: var(--blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+.memory-meter {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 8px;
+}
+.memory-meter-error { border-color: rgba(248, 81, 73, 0.35); }
+.memory-meter-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.memory-meter-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.memory-meter-value { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 4px; }
+.memory-meter-total { font-size: 13px; font-weight: 500; color: var(--muted); }
+.memory-meter-pct { font-size: 22px; font-weight: 700; line-height: 1; }
+.memory-bar { height: 10px; background: var(--chip-bg); border-radius: 999px; overflow: hidden; }
+.memory-bar-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease, background 0.3s ease; }
+.memory-meter-meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.memory-model-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.memory-model-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.memory-model-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-model-size { color: var(--blue); flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 /* ── Spinner ───────────────────────────────────────────────────────────── */
 .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25);
   border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }

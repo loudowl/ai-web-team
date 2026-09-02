@@ -11,7 +11,7 @@ const STATUS_CHIP = {
   error:   { color: '#f85149', bg: '#2d0f0f', label: 'Error' },
 };
 
-const DELETABLE_STATUSES = new Set(['pending', 'error', 'done']);
+const DELETABLE_STATUSES = new Set(['pending', 'running', 'error', 'done']);
 
 function ProjectCard({ project, onClick, onDelete, deleting }) {
   const chip = STATUS_CHIP[project.status] || STATUS_CHIP.pending;

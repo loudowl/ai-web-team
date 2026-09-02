@@ -39,6 +39,9 @@ export const listCodingAgents = () =>
 export const deleteModel = (model) =>
   api.delete('/api/models', { data: { model } }).then(r => r.data);
 
+export const getOllamaMemory = () =>
+  api.get('/api/models/ollama/memory').then(r => r.data);
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 export const WS_URL = API_URL.replace(/^http/, 'ws');
 

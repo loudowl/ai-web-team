@@ -30,7 +30,7 @@ export default function ProjectPage() {
   const [deleting, setDeleting]       = useState(false);
 
   const isJira = project?.mode === 'jira';
-  const canDelete = ['pending', 'error', 'done'].includes(project?.status);
+  const canDelete = ['pending', 'running', 'error', 'done'].includes(project?.status);
 
   useEffect(() => {
     let mounted = true;

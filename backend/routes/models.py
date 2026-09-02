@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model
+from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model, ollama_memory_status
 from models.coding_agents import (
     get_recommended_models,
     get_excluded_models,
@@ -28,6 +28,12 @@ def list_models():
             "ollama":    {"available": True,                           "model": config.OLLAMA_MODEL},
         }
     }
+
+
+@router.get("/ollama/memory")
+def ollama_memory():
+    """Live Ollama RAM usage from /api/ps plus installed model disk footprint."""
+    return ollama_memory_status()
 
 
 @router.get("/coding-agents")

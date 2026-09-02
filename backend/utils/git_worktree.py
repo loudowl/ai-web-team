@@ -91,14 +91,22 @@ def ensure_worktree(
     return str(dest)
 
 
-def remove_worktree(worktree_path: str, repo_path: str = None):
-    """Best-effort cleanup."""
-    wt = Path(worktree_path).resolve()
+def remove_worktree(worktree_path: str, repo_path: str = None, timeout: int = 15):
+    """Best-effort cleanup — never block for long (agent may hold files open)."""
+    wt = Path(worktree_path).expanduser()
+    if not wt.is_absolute():
+        wt = (Path(__file__).resolve().parent.parent / wt).resolve()
+    else:
+        wt = wt.resolve()
     if not wt.exists():
         return
     if repo_path and Path(repo_path).resolve().joinpath(".git").exists():
         try:
-            _run(["git", "worktree", "remove", "--force", str(wt)], cwd=str(Path(repo_path).resolve()))
+            _run(
+                ["git", "worktree", "remove", "--force", str(wt)],
+                cwd=str(Path(repo_path).resolve()),
+                timeout=timeout,
+            )
             return
         except RuntimeError:
             pass
