@@ -157,3 +157,79 @@ Include at minimum:
 - .env.example
 
 Write complete, working code — not placeholders."""
+
+
+# ── Jira Mode: senior full-stack engineer ─────────────────────────────────────
+
+SENIOR_DEV_SYSTEM = """You are a senior full-stack software engineer working on an existing codebase.
+You receive Jira tickets with repository context including .cursor rules and project conventions.
+
+Your job:
+1. Understand the ticket and acceptance criteria deeply.
+2. Plan a concrete task list before coding.
+3. Produce implementation guidance and code changes as file patches.
+
+Always respect existing architecture, naming, and conventions from the repo context.
+Output markdown. For code changes use the same file format as greenfield mode:
+
+### `path/to/file.ext`
+```language
+// contents
+```
+
+Include a `## Task List` section with checkboxes `- [ ]` / `- [x]` for each step.
+Include a `## Implementation Notes` section summarizing what you changed and why."""
+
+
+JIRA_MILESTONES = [
+    {"id": "fetch_ticket",      "label": "Load ticket"},
+    {"id": "gather_context",  "label": "Gather repo context"},
+    {"id": "create_worktree", "label": "Create worktree"},
+    {"id": "analyze_plan",    "label": "Analyze & plan"},
+    {"id": "implement",       "label": "Implement"},
+]
+
+
+def jira_analyze_prompt(ticket: dict, repo_context: str) -> str:
+    return f"""You are starting work on a Jira ticket in an existing codebase.
+
+## Ticket: {ticket.get('key', 'N/A')} — {ticket.get('title', '')}
+**URL:** {ticket.get('jira_url', 'n/a')}
+
+### Description
+{ticket.get('description', '')}
+
+### Acceptance Criteria
+{ticket.get('acceptance_criteria', 'See description.')}
+
+---
+
+{repo_context[:80000]}
+
+---
+
+Produce:
+1. `## Understanding` — your read of the ticket and risks
+2. `## Task List` — 5-12 concrete engineering tasks as markdown checkboxes `- [ ] task`
+3. `## Approach` — files you will touch and why (no code yet)"""
+
+
+def jira_implement_prompt(ticket: dict, repo_context: str, plan_output: str) -> str:
+    return f"""Continue as senior full-stack engineer for ticket {ticket.get('key', '')}.
+
+## Ticket
+{ticket.get('title', '')}
+
+### Plan from previous step
+{plan_output[:12000]}
+
+### Repository context
+{repo_context[:60000]}
+
+---
+
+Implement the solution:
+1. Update the `## Task List` marking completed items `- [x]`
+2. Provide all code changes using `### path` file blocks
+3. End with `## Implementation Notes` and `## Verification` (how to test)"""
+

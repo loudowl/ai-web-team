@@ -6,6 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 import database as db
 from agents.runner import run_pipeline
+from agents.jira_runner import run_jira_pipeline
 
 router = APIRouter()
 
@@ -35,26 +36,48 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
                 pass
 
     try:
+        mode = project.get("mode") or "greenfield"
+
         # If pipeline already ran, replay artifacts and close
         if project["status"] == "done":
-            agents = db.get_agent_runs(project_id)
-            for run in agents:
-                if run.get("output"):
-                    await send(json.dumps({
-                        "type":  "replay",
-                        "agent": run["agent"],
-                        "data":  run["output"],
-                    }))
+            if mode == "jira":
+                tickets = db.list_tickets(project_id)
+                for t in tickets:
+                    if t.get("output"):
+                        await send(json.dumps({
+                            "type": "replay",
+                            "agent": "senior_dev",
+                            "ticket_id": t["id"],
+                            "data": t["output"],
+                        }))
+                    if t.get("tasks_json"):
+                        await send(json.dumps({
+                            "type": "tasks",
+                            "agent": "senior_dev",
+                            "ticket_id": t["id"],
+                            "data": t["tasks_json"],
+                        }))
+            else:
+                agents = db.get_agent_runs(project_id)
+                for run in agents:
+                    if run.get("output"):
+                        await send(json.dumps({
+                            "type":  "replay",
+                            "agent": run["agent"],
+                            "data":  run["output"],
+                        }))
             await send(json.dumps({"type": "pipeline_done", "agent": "system", "data": "Pipeline already complete."}))
             return
 
-        # Run the pipeline
-        await run_pipeline(
-            project_id=project_id,
-            brief=project["brief"],
-            provider=project["provider"],
-            send=send,
-        )
+        if mode == "jira":
+            await run_jira_pipeline(project_id=project_id, send=send)
+        else:
+            await run_pipeline(
+                project_id=project_id,
+                brief=project["brief"],
+                provider=project["provider"],
+                send=send,
+            )
 
     except WebSocketDisconnect:
         pass

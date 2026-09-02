@@ -1,0 +1,63 @@
+import { X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useProjectStore } from '../store/projectStore';
+
+export default function TicketModal({ ticketId, onClose }) {
+  const { tickets, ticketStates, JIRA_MILESTONES } = useProjectStore();
+  const ticket = tickets.find(t => t.id === ticketId);
+  const ts = ticketStates[ticketId] || {};
+
+  if (!ticket) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">
+            🎫 {ticket.ticket_key || ticket.id} — {ticket.title}
+          </span>
+          <button className="icon-btn" onClick={onClose}>
+            <X size={24} color="#e6edf3" />
+          </button>
+        </div>
+
+        <div style={{ padding: '12px 16px', background: '#161b22', borderBottom: '1px solid #30363d' }}>
+          <div className="section-label" style={{ margin: '0 0 8px' }}>MILESTONES</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {JIRA_MILESTONES.map(m => {
+              const ms = ts.milestones?.[m.id] || { status: 'pending' };
+              const color = ms.status === 'done' ? '#3fb950' : ms.status === 'running' ? '#d29922' : '#484f58';
+              return (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />
+                  <span style={{ color: '#e6edf3', flex: 1 }}>{m.label}</span>
+                  {ms.detail && <span className="meta-text">{ms.detail.slice(0, 40)}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {(ts.tasks || []).length > 0 && (
+          <div style={{ padding: '12px 16px', background: '#0d1117', borderBottom: '1px solid #30363d' }}>
+            <div className="section-label" style={{ margin: '0 0 8px' }}>TASK LIST</div>
+            {(ts.tasks || []).map(task => (
+              <div key={task.id} style={{ fontSize: 12, color: task.status === 'done' ? '#3fb950' : '#8b949e', marginBottom: 4 }}>
+                {task.status === 'done' ? '✓' : '○'} {task.label}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="modal-body">
+          <div className="markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {ts.output || ticket.description || '_Waiting for agent output…_'}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
