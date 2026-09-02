@@ -36,10 +36,16 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+    reload = os.getenv("RELOAD", "true").lower() in ("1", "true", "yes")
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", 3001)),
-        reload=True,
-        reload_excludes=["data/worktrees/*", "data/*.db"],
+        reload=reload,
+        # Single-level globs miss nested worktree files and trigger mid-run reloads.
+        reload_excludes=[
+            "**/data/worktrees/**",
+            "**/data/*.db",
+            "**/data/*.db-*",
+        ],
     )
