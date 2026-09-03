@@ -1,15 +1,23 @@
-import { X } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useProjectStore } from '../store/projectStore';
 import ThinkingIndicator, { getTicketActivity } from './ThinkingIndicator';
+import { isDemoProjectId } from '../demo/demoData';
+
+const DEMO_PR_PLACEHOLDER = 'https://github.com/foxnews/fts-foxnews.com';
 
 export default function TicketModal({ ticketId, onClose }) {
-  const { tickets, ticketStates, JIRA_MILESTONES } = useProjectStore();
+  const { tickets, ticketStates, JIRA_MILESTONES, activeProject } = useProjectStore();
   const ticket = tickets.find(t => t.id === ticketId);
   const ts = ticketStates[ticketId] || {};
   const activity = getTicketActivity(ts, JIRA_MILESTONES);
   const isRunning = ts.status === 'running' || ts.active;
+  const isDone = ts.status === 'done' || ticket?.status === 'done';
+  const isDemo = isDemoProjectId(activeProject?.id);
+  const realPrUrl = ts.prUrl || ticket?.pr_url;
+  const prHref = isDemo ? DEMO_PR_PLACEHOLDER : realPrUrl;
+  const showPrButton = isDone && !!prHref;
 
   if (!ticket) return null;
 
@@ -26,17 +34,6 @@ export default function TicketModal({ ticketId, onClose }) {
         </div>
 
         <div style={{ padding: '12px 16px', background: '#161b22', borderBottom: '1px solid #30363d' }}>
-          {(ts.prUrl || ticket.pr_url) && (
-            <a
-              href={ts.prUrl || ticket.pr_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-outline"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12, textDecoration: 'none' }}
-            >
-              View pull request
-            </a>
-          )}
           {isRunning && <ThinkingIndicator ticketId={ticketId} />}
           <div className="section-label" style={{ margin: '0 0 8px' }}>MILESTONES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -78,6 +75,20 @@ export default function TicketModal({ ticketId, onClose }) {
             </ReactMarkdown>
           </div>
         </div>
+
+        {showPrButton && (
+          <div className="modal-footer">
+            <a
+              href={prHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-push modal-pr-btn"
+            >
+              <ExternalLink size={18} />
+              View pull request
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

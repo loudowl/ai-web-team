@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Settings, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { listProjects, deleteProject } from '../services/api';
 import { useProjectStore } from '../store/projectStore';
+import { useUiStore } from '../store/uiStore';
+import { DEMO_PROJECT_ID } from '../demo/demoData';
 
 const STATUS_CHIP = {
   pending: { color: '#8b949e', bg: '#21262d', label: 'Pending' },
@@ -57,6 +59,7 @@ function ProjectCard({ project, onClick, onDelete, deleting }) {
 export default function HomePage() {
   const navigate = useNavigate();
   const { setProjects, setActiveProject, resetRun } = useProjectStore();
+  const { setInterfaceMode, startDemo } = useUiStore();
   const [projects, setLocal] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -87,6 +90,7 @@ export default function HomePage() {
   };
 
   const handleDelete = async (project) => {
+    if (project.id === DEMO_PROJECT_ID) return;
     if (!window.confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
     setDeletingId(project.id);
     try {
@@ -97,6 +101,14 @@ export default function HomePage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const startDemoMode = () => {
+    resetRun();
+    setInterfaceMode('minimal');
+    startDemo();
+    setActiveProject(null);
+    navigate(`/project/${DEMO_PROJECT_ID}`, { replace: true });
   };
 
   return (
@@ -115,6 +127,15 @@ export default function HomePage() {
             <Settings size={22} />
           </button>
         </div>
+      </div>
+
+      <div className="home-actions">
+        <button type="button" className="btn-outline home-action-btn" onClick={() => navigate('/batch')}>
+          Ticket batch
+        </button>
+        <button type="button" className="btn-outline home-action-btn" onClick={startDemoMode}>
+          Demo mode
+        </button>
       </div>
 
       <div className="content list">
@@ -137,7 +158,7 @@ export default function HomePage() {
         )}
       </div>
 
-      <button className="fab" onClick={() => navigate('/new')} title="New project">
+      <button className="fab" onClick={() => navigate('/new')} title="New project (full form)">
         <Plus size={28} />
       </button>
     </div>

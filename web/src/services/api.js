@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isDemoProjectId } from '../demo/demoData';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -17,8 +18,12 @@ export const listTickets = (projectId) =>
 export const getProject = (id) =>
   api.get(`/api/projects/${id}`).then(r => r.data);
 
-export const deleteProject = (id) =>
-  api.delete(`/api/projects/${id}`).then(r => r.data);
+export const deleteProject = (id) => {
+  if (isDemoProjectId(id)) {
+    return Promise.resolve({ deleted: id });
+  }
+  return api.delete(`/api/projects/${id}`).then(r => r.data);
+};
 
 export const getAgentRuns = (id) =>
   api.get(`/api/projects/${id}/agents`).then(r => r.data.agents);
@@ -46,6 +51,9 @@ export const getOllamaMemory = () =>
 export const WS_URL = API_URL.replace(/^http/, 'ws');
 
 export function connectWS(projectId, onMessage, onClose) {
+  if (isDemoProjectId(projectId)) {
+    return { close: () => {} };
+  }
   const ws = new WebSocket(`${WS_URL}/ws/${projectId}`);
   ws.onmessage = (e) => {
     try { onMessage(JSON.parse(e.data)); } catch {}
