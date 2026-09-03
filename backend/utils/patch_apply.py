@@ -6,35 +6,68 @@ from typing import List, Tuple
 
 from utils.github_push import parse_developer_output
 
+# Generated/build output — never patch these even if the model cites them.
+_BLOCKED_PATH_PREFIXES = (
+    ".nuxt/",
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".output/",
+)
+
+
+def _normalize_markdown(output: str) -> str:
+    """Codestral often indents headings; strip so ### `path` lines parse."""
+    fixed = []
+    for line in output.splitlines():
+        m = re.match(r"^(\s+)(#{1,4}\s+`.+`.*)$", line)
+        fixed.append(m.group(2) if m else line)
+    return "\n".join(fixed)
+
+
+def _clean_rel_path(path: str) -> str:
+    clean = path.strip().lstrip("/").replace("\\", "/")
+    parts = [p for p in clean.split("/") if p]
+    # Drop accidental repo folder prefix: fts-foxnews.com/components/...
+    if len(parts) > 1 and "." in parts[0] and not parts[0].startswith("."):
+        parts = parts[1:]
+    return "/".join(parts)
+
+
+def _is_allowed_path(rel: str) -> bool:
+    lower = rel.lower()
+    return not any(lower.startswith(p) for p in _BLOCKED_PATH_PREFIXES)
+
 
 def parse_code_blocks(output: str) -> List[Tuple[str, str]]:
     """Extract (relative_path, contents) pairs from agent markdown output."""
-    files = parse_developer_output(output)
+    text = _normalize_markdown(output)
+    files = parse_developer_output(text)
 
     if not files:
         pattern = re.compile(
-            r"(?:^|\n)#{2,4}\s+`?([^\n`]+)`?\s*\n+```[^\n]*\n(.*?)```",
+            r"(?:^|\n)\s*#{2,4}\s+`?([^\n`]+)`?\s*\n+\s*```[^\n]*\n(.*?)```",
             re.DOTALL,
         )
-        for match in pattern.finditer(output):
+        for match in pattern.finditer(text):
             path = match.group(1).strip()
             if "." in path.split("/")[-1] or "/" in path:
                 files.append((path, match.group(2)))
 
     if not files:
         pattern = re.compile(
-            r"(?:^|\n)(?:File|Path):\s*`?([^\n`]+)`?\s*\n+```[^\n]*\n(.*?)```",
+            r"(?:^|\n)\s*(?:File|Path):\s*`?([^\n`]+)`?\s*\n+\s*```[^\n]*\n(.*?)```",
             re.DOTALL | re.IGNORECASE,
         )
-        for match in pattern.finditer(output):
+        for match in pattern.finditer(text):
             files.append((match.group(1).strip(), match.group(2)))
 
-    # De-dupe by path — last block wins
+    # De-dupe by path — last block wins; drop build artifacts
     deduped = {}
     for path, content in files:
-        clean = path.strip().lstrip("/").replace("\\", "/")
-        if clean and not clean.startswith("#"):
-            deduped[clean] = content
+        clean = _clean_rel_path(path)
+        if clean and not clean.startswith("#") and _is_allowed_path(clean):
+            deduped[clean] = content.strip() + ("\n" if content.strip() else "")
     return list(deduped.items())
 
 

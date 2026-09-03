@@ -95,10 +95,10 @@ def parse_developer_output(output: str) -> List[Tuple[str, str]]:
       ```
     """
     files = []
-    # Match ### `filepath` followed by a code block
+    # Match ### `filepath` followed by a code block (optional leading whitespace)
     pattern = re.compile(
-        r'###\s+`([^`]+)`\s*\n```[^\n]*\n(.*?)```',
-        re.DOTALL
+        r'^\s*###\s+`([^`]+)`\s*\n\s*```[^\n]*\n(.*?)```',
+        re.DOTALL | re.MULTILINE,
     )
     for match in pattern.finditer(output):
         filepath = match.group(1).strip()

@@ -244,7 +244,9 @@ Implement ticket {key} now.
 Requirements:
 1. Mark completed items in `## Task List` as `- [x]`
 2. Output EVERY changed file using `### \`path\`` followed by a fenced code block with the full file contents
-3. End with `## Implementation Notes` and `## Verification`
+3. Paths must be relative to the repo root (e.g. `components/Foo.vue`) — never include the repo folder name, never edit `.nuxt/`, `node_modules/`, or `dist/`
+4. Do not indent the `###` heading lines
+5. End with `## Implementation Notes` and `## Verification`
 
 You MUST include at least one `### \`path/to/file\`` code block. Do not ask questions — implement."""
 
@@ -254,10 +256,10 @@ def jira_implement_retry_prompt(ticket: dict, plan_output: str) -> str:
 
 Output ONLY changed files now — no prose before the file blocks.
 
-Required format for EVERY file:
+Required format for EVERY file (no leading spaces on the `###` line):
 
-### `path/from/repo/root.ext`
-```lang
+### `components/Example.vue`
+```vue
 full file contents
 ```
 
@@ -266,5 +268,6 @@ Ticket: {ticket.get('title', '')}
 Approved plan (follow this):
 {plan_output[:6000]}
 
+Use source paths under components/, pages/, layouts/, plugins/ — NOT `.nuxt/` or build output.
 Start immediately with `### ` file blocks. Include at least one real file from the repo."""
 

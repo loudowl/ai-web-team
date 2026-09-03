@@ -220,7 +220,6 @@ async def run_ticket(
         db.update_ticket(ticket_id, output=full_output, tasks_json=json.dumps(tasks))
         db.save_artifact(project["id"], f"{AGENT}:{ticket_id}", f"{ticket_row.get('ticket_key', ticket_id)}.md", full_output)
         await emit("tasks", AGENT, json.dumps(tasks), ticket_id)
-        await milestone("implement", "done")
 
         # Apply patches to worktree
         await milestone("apply_patches", "running")
@@ -231,6 +230,7 @@ async def run_ticket(
             )
         written = apply_patches(wt_path, patches)
         await milestone("apply_patches", "done", f"{len(written)} file(s)")
+        await milestone("implement", "done")
 
         # Commit, push, and open PR
         await milestone("commit_push", "running")
