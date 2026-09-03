@@ -5,11 +5,14 @@ from typing import Dict, List, Optional
 
 import config
 
-# Keep repo context small — Ollama defaults to a tiny context window.
+# Keep repo context small — must fit in Ollama num_ctx alongside output tokens.
 _MAX_FILE_BYTES = 12_000
 _MAX_RULES_CHARS = 24_000
 _MAX_TREE_LINES = 120
 _MAX_REPO_CONTEXT_CHARS = 40_000
+# Analyze phase: tree + minimal rules; ticket is appended last so it survives truncation.
+_MAX_ANALYZE_REPO_CHARS = 6_000
+_MAX_ANALYZE_RULES_CHARS = 2_000
 
 _RULE_SUFFIXES = {".md", ".mdc", ".txt"}
 _SKIP_PATH_PARTS = (
@@ -91,9 +94,9 @@ def _should_include_cursor_file(rel: str) -> bool:
     return False
 
 
-def _collect_cursor_files(repo: Path) -> List[Dict[str, str]]:
+def _collect_cursor_files(repo: Path, max_rules_chars: int = _MAX_RULES_CHARS) -> List[Dict[str, str]]:
     found = []
-    budget = _MAX_RULES_CHARS
+    budget = max_rules_chars
 
     candidates = []
     cursor_rules = repo / ".cursor" / "rules"
@@ -155,7 +158,7 @@ def _tree_summary(repo: Path, max_depth: int = 2) -> str:
     return "\n".join(lines[:_MAX_TREE_LINES])
 
 
-def format_repo_context(packages: List[Dict]) -> str:
+def format_repo_context(packages: List[Dict], max_chars: int = _MAX_REPO_CONTEXT_CHARS) -> str:
     parts = ["# Repository Context (conventions only — not the task)\n"]
     for pkg in packages:
         parts.append(f"\n## Repo: {pkg['name']}\n")
@@ -167,8 +170,21 @@ def format_repo_context(packages: List[Dict]) -> str:
                 parts.append(f"#### `{f['path']}`\n```\n{f['content']}\n```\n")
 
     text = "".join(parts)
-    if len(text) > _MAX_REPO_CONTEXT_CHARS:
-        text = text[:_MAX_REPO_CONTEXT_CHARS] + "\n\n[... repo context truncated ...]"
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n[... repo context truncated ...]"
+    return text
+
+
+def format_analyze_repo_context(packages: List[Dict]) -> str:
+    """Compact repo snapshot for planning — tree only, tiny rule budget."""
+    parts = ["# Repository snapshot (for file paths only — NOT the task)\n"]
+    for pkg in packages:
+        parts.append(f"\n## Repo: {pkg['name']}\n")
+        parts.append("### Directory tree (partial)\n```\n" + pkg["tree"] + "\n```\n")
+
+    text = "".join(parts)
+    if len(text) > _MAX_ANALYZE_REPO_CHARS:
+        text = text[:_MAX_ANALYZE_REPO_CHARS] + "\n\n[... tree truncated ...]"
     return text
 
 
@@ -186,6 +202,7 @@ def build_repo_context(repo_context_path: str, ticket: Optional[dict] = None) ->
         })
 
     repo_text = format_repo_context(packages)
+    analyze_repo_text = format_analyze_repo_context(packages)
     ticket_text = format_ticket_block(ticket) if ticket else ""
     context_text = ticket_text
     if repo_text:
@@ -195,6 +212,7 @@ def build_repo_context(repo_context_path: str, ticket: Optional[dict] = None) ->
         "root": str(repos[0]) if len(repos) == 1 else str(root),
         "repos": packages,
         "context_text": context_text,
+        "analyze_repo_text": analyze_repo_text,
         "ticket_text": ticket_text,
         "repo_text": repo_text,
     }

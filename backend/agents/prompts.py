@@ -194,7 +194,8 @@ def jira_analyze_prompt(ticket: dict, repo_context: str) -> str:
     from utils.repo_context import format_ticket_block
 
     ticket_block = format_ticket_block(ticket)
-    return f"""{ticket_block}
+    key = ticket.get("key", "N/A")
+    return f"""You will plan work for ONE Jira ticket. Repo context below is ONLY for file paths — ignore any unrelated examples in rules.
 
 ---
 
@@ -202,9 +203,13 @@ def jira_analyze_prompt(ticket: dict, repo_context: str) -> str:
 
 ---
 
-Using ONLY the Jira ticket above (key {ticket.get('key', 'N/A')}), produce:
+{ticket_block}
 
-1. `## Understanding` — restate the ticket in your own words (must mention "{ticket.get('key', '')}" and the problem from the title)
+---
+
+Using ONLY the **ACTIVE JIRA TICKET** section above (key {key}), produce:
+
+1. `## Understanding` — restate the ticket in your own words (must mention "{key}" and the problem from the title)
 2. `## Task List` — 5-12 concrete engineering tasks as `- [ ] task`
 3. `## Approach` — exact files to change in this repo (paths from the tree). No code yet.
 
@@ -215,21 +220,26 @@ def jira_implement_prompt(ticket: dict, repo_context: str, plan_output: str) -> 
     from utils.repo_context import format_ticket_block
 
     ticket_block = format_ticket_block(ticket)
-    return f"""{ticket_block}
-
----
-
-### Approved plan
-{plan_output[:8000]}
+    key = ticket.get("key", "")
+    return f"""Implement ONE Jira ticket. Repo conventions below are secondary — the ticket and approved plan are authoritative.
 
 ---
 
 ### Repo conventions (partial)
-{repo_context[:20000]}
+{repo_context[:12000]}
 
 ---
 
-Implement the Jira ticket {ticket.get('key', '')} now.
+### Approved plan
+{plan_output[:6000]}
+
+---
+
+{ticket_block}
+
+---
+
+Implement ticket {key} now.
 
 Requirements:
 1. Mark completed items in `## Task List` as `- [x]`

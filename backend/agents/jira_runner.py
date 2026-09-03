@@ -148,7 +148,7 @@ async def run_ticket(
 
     repo_path = project.get("repo_context_path") or config.REPO_CONTEXT_PATH
     ctx = build_repo_context(repo_path, ticket=ticket)
-    repo_context_text = ctx["context_text"]
+    analyze_repo_text = ctx["analyze_repo_text"]
     repo_root = ctx["root"]
 
     async def emit(type_: str, agent: str, data: str, tid: str = None):
@@ -187,8 +187,9 @@ async def run_ticket(
 
         # Plan
         await milestone("analyze_plan", "running")
-        plan_prompt = jira_analyze_prompt(ticket, repo_context_text)
+        plan_prompt = jira_analyze_prompt(ticket, analyze_repo_text)
         plan_output = await _stream_agent(plan_prompt, provider, ticket_id, emit, phase="analyze_plan")
+        db.update_ticket(ticket_id, output=plan_output)
         _validate_plan(plan_output, ticket)
         tasks = _parse_task_list(plan_output)
         db.update_ticket(ticket_id, tasks_json=json.dumps(tasks))
@@ -197,7 +198,7 @@ async def run_ticket(
 
         # Implement
         await milestone("implement", "running")
-        impl_prompt = jira_implement_prompt(ticket, repo_context_text, plan_output)
+        impl_prompt = jira_implement_prompt(ticket, ctx["repo_text"], plan_output)
         impl_output = await _stream_agent(impl_prompt, provider, ticket_id, emit, phase="implement")
         full_output = plan_output + "\n\n---\n\n# Implementation\n\n" + impl_output
 
