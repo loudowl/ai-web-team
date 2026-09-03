@@ -9,6 +9,7 @@ export const DEMO_TICKETS = [
     title: '[FE][SEO] Reduce layout shift (CLS) on article pages',
     description: 'Reserve vertical space for nav, App Store banner, and top ad on mobile articles.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-2',
@@ -16,6 +17,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Fix broken thumbnail aspect ratio on video cards',
     description: 'Video cards render 16:9 placeholders before images load.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-3',
@@ -23,6 +25,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Add lazy-load for below-the-fold images',
     description: 'Improve LCP by deferring non-critical article images.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-4',
@@ -30,6 +33,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Update breaking news banner z-index stacking',
     description: 'Banner overlaps site nav on small viewports.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-5',
@@ -37,6 +41,7 @@ export const DEMO_TICKETS = [
     title: '[FE] RSS feed validator error on category pages',
     description: 'Invalid XML entity in category RSS output.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-6',
@@ -44,6 +49,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Hero image preload hint for homepage LCP',
     description: 'Add fetchpriority and preload link for hero asset.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-7',
@@ -51,6 +57,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Skip link focus trap on article templates',
     description: 'Keyboard users cannot reach main content skip target.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-8',
@@ -58,6 +65,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Sticky nav jitter on iOS Safari scroll',
     description: 'Position sticky recalculates when address bar collapses.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-9',
@@ -65,6 +73,7 @@ export const DEMO_TICKETS = [
     title: '[FE] AMP canonical URL mismatch on section pages',
     description: 'Canonical tag points to wrong path on paginated sections.',
     status: 'pending',
+    board_lane: 'todo',
   },
   {
     id: 'demo-10',
@@ -72,6 +81,7 @@ export const DEMO_TICKETS = [
     title: '[FE] Reduce unused JavaScript on article bundle',
     description: 'Split chartbeat and social widgets from critical path.',
     status: 'pending',
+    board_lane: 'todo',
   },
 ];
 
@@ -81,7 +91,7 @@ export function createDemoProject() {
     id: DEMO_PROJECT_ID,
     name: 'Demo batch — 10 tickets',
     brief: 'Sample data only · no backend calls',
-    status: 'running',
+    status: 'ready',
     mode: 'jira',
     provider: 'ollama',
     model: 'codestral',

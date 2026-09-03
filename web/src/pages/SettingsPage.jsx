@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Trash2 } from 'lucide-react';
-import { listModels, deleteModel, API_URL } from '../services/api';
+import { listModels, deleteModel } from '../services/api';
+import { streamOllamaPull } from '../utils/ollamaPull';
 import OllamaMemoryMeter from '../components/OllamaMemoryMeter';
 
 function ModelRow({ model, onDelete }) {
@@ -25,31 +26,18 @@ function PullProgress({ model, onDone }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_URL}/api/models/pull`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model }),
-    }).then(async (resp) => {
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value);
-        const lines = text.split('\n').filter(l => l.startsWith('data:'));
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line.slice(5));
-            if (data.status === 'complete') { if (!cancelled) onDone(); return; }
-            if (!cancelled) {
-              setStatus(data.status || '');
-              setPct(data.pct || 0);
-            }
-          } catch {}
-        }
-      }
-      if (!cancelled) onDone();
-    }).catch(e => { window.alert('Pull failed: ' + e.message); if (!cancelled) onDone(); });
+    streamOllamaPull(model, {
+      onProgress: ({ status: s, pct: p }) => {
+        if (cancelled) return;
+        setStatus(s || '');
+        setPct(p || 0);
+      },
+    })
+      .then(() => { if (!cancelled) onDone(); })
+      .catch(e => {
+        window.alert('Pull failed: ' + e.message);
+        if (!cancelled) onDone();
+      });
 
     return () => { cancelled = true; };
   }, [model, onDone]);
@@ -158,7 +146,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="section">Backend URL</div>
-        <div className="config-value">{API_URL}</div>
+        <div className="config-value">{import.meta.env.VITE_API_URL || 'http://localhost:3001'}</div>
         <div className="hint">Set VITE_API_URL in your .env file to change.</div>
       </div>
     </div>

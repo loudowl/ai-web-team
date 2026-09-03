@@ -185,8 +185,10 @@ JIRA_MILESTONES = [
     {"id": "analyze_plan",    "label": "Analyze & plan"},
     {"id": "implement",       "label": "Implement"},
     {"id": "apply_patches",   "label": "Apply code changes"},
+    {"id": "fix_lint",        "label": "Fix lint errors"},
     {"id": "commit_push",     "label": "Commit & push"},
     {"id": "create_pr",       "label": "Create pull request"},
+    {"id": "address_review",  "label": "Address Copilot review"},
 ]
 
 
@@ -270,4 +272,57 @@ Approved plan (follow this):
 
 Use source paths under components/, pages/, layouts/, plugins/ — NOT `.nuxt/` or build output.
 Start immediately with `### ` file blocks. Include at least one real file from the repo."""
+
+
+CODE_REVIEW_SYSTEM = """You are a senior code reviewer acting on GitHub PR feedback (often from Copilot).
+
+Rules:
+- Only fix CRITICAL issues: definite bugs, security problems, broken lint/type errors, or clear regressions.
+- Skip nitpicks, stylistic preferences, and optional refactors unless they block CI.
+- Output changed files as markdown blocks: ### `path` then a fenced code block with full file contents.
+- Do not ask questions — apply minimal safe fixes."""
+
+
+def jira_lint_fix_prompt(ticket: dict, lint_output: str, changed_files: list) -> str:
+    files_list = "\n".join(f"- `{f}`" for f in changed_files[:20])
+    return f"""Ticket {ticket.get('key', '')}: {ticket.get('title', '')}
+
+ESLint/lint failed after your changes. Fix ONLY the lint errors below — do not refactor unrelated code.
+
+Changed files:
+{files_list}
+
+Lint output:
+```
+{lint_output[:8000]}
+```
+
+Output EVERY file you change using ### `path` + fenced code block (full file contents).
+Fix all reported errors in those files. No prose before the file blocks."""
+
+
+def jira_copilot_review_prompt(ticket: dict, comments: list, changed_files: list) -> str:
+    files_list = "\n".join(f"- `{f}`" for f in changed_files[:20])
+    comment_blocks = []
+    for i, c in enumerate(comments[:15], 1):
+        loc = f"{c.get('path') or 'general'}:{c.get('line') or '?'}"
+        comment_blocks.append(
+            f"### Comment {i} ({c.get('author', 'reviewer')}) @ {loc}\n{c.get('body', '')[:1500]}"
+        )
+    comments_text = "\n\n".join(comment_blocks) or "No comments."
+
+    return f"""Ticket {ticket.get('key', '')}: {ticket.get('title', '')}
+
+GitHub Copilot / bot review comments on the open PR:
+
+{comments_text}
+
+Files in this PR:
+{files_list}
+
+Triage these comments. Implement ONLY critical fixes (bugs, security, CI/lint blockers).
+Ignore low-value nitpicks.
+
+For each critical fix, output ### `path` + fenced code block with the complete updated file.
+If nothing is critical, respond with exactly: NO_CRITICAL_FIXES"""
 

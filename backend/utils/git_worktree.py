@@ -40,6 +40,7 @@ def ensure_worktree(
     project_id: str,
     ticket_id: str,
     ticket_key: str = None,
+    base_branch: str = None,
 ) -> str:
     """
     Create or return existing worktree path for a ticket.
@@ -59,10 +60,10 @@ def ensure_worktree(
         dest.rmdir()
 
     branch = branch_name(ticket_key or ticket_id)
-    base_branch = detect_base_branch(str(repo))
+    collab_base = base_branch or detect_base_branch(str(repo))
 
     try:
-        _run(["git", "fetch", "origin", base_branch], cwd=str(repo), timeout=180)
+        _run(["git", "fetch", "origin", collab_base], cwd=str(repo), timeout=180)
     except RuntimeError:
         pass
 
@@ -71,11 +72,11 @@ def ensure_worktree(
     except RuntimeError:
         pass
 
-    start_point = f"origin/{base_branch}"
+    start_point = f"origin/{collab_base}"
     try:
         _run(["git", "rev-parse", start_point], cwd=str(repo))
     except RuntimeError:
-        start_point = base_branch
+        start_point = collab_base
 
     try:
         _run(

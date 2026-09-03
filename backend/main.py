@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.models import router as models_router
 from routes.projects import router as projects_router
+from routes.board import router as board_router
+from routes.board_global import router as board_global_router
 from routes.ws import router as ws_router
 
 app = FastAPI(title="ai-web-team API", version="1.0.0")
@@ -20,6 +22,8 @@ app.add_middleware(
 )
 
 app.include_router(projects_router)
+app.include_router(board_router)
+app.include_router(board_global_router)
 app.include_router(models_router)
 app.include_router(ws_router)
 

@@ -41,6 +41,7 @@ async def run_pipeline(
     brief: str,
     provider: str,
     send: Callable[[str], Awaitable[None]],
+    model: str = None,
 ):
     """
     Run all 4 agents sequentially, streaming tokens via `send(json_str)`.
@@ -82,6 +83,7 @@ async def run_pipeline(
                 provider=provider,
                 agent=agent,
                 system=AGENT_SYSTEMS[agent],
+                model=model,
             )
 
             def _next_chunk():

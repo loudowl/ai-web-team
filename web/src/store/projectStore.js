@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { isDemoProjectId } from '../demo/demoData';
+import { listTickets, listGlobalBoardTickets } from '../services/api';
 
 const AGENTS = ['pm', 'designer', 'architect', 'developer'];
 
@@ -8,6 +10,7 @@ const AGENT_META = {
   architect: { label: 'Architect',       icon: '🏗️',  color: '#d29922' },
   developer: { label: 'Developer',       icon: '💻', color: '#3fb950' },
   senior_dev:{ label: 'Senior Engineer', icon: '🧑‍💻', color: '#3fb950' },
+  code_reviewer:{ label: 'Code Reviewer', icon: '🔍', color: '#79c0ff' },
 };
 
 const JIRA_MILESTONES = [
@@ -17,8 +20,10 @@ const JIRA_MILESTONES = [
   { id: 'analyze_plan',     label: 'Analyze & plan' },
   { id: 'implement',        label: 'Implement' },
   { id: 'apply_patches',    label: 'Apply code changes' },
+  { id: 'fix_lint',         label: 'Fix lint errors' },
   { id: 'commit_push',      label: 'Commit & push' },
   { id: 'create_pr',        label: 'Create pull request' },
+  { id: 'address_review',   label: 'Address Copilot review' },
 ];
 
 const initialAgentState = () =>
@@ -34,6 +39,7 @@ const initialTicketState = () => ({
   milestones: Object.fromEntries(
     JIRA_MILESTONES.map(m => [m.id, { status: 'pending', detail: '' }])
   ),
+  boardLane: 'todo',
   active: false,
   startedAt: null,
   thinkingSince: null,
@@ -60,19 +66,102 @@ export const useProjectStore = create((set, get) => ({
   tickets: [],
   activeTicketId: null,
 
-  setTickets: (tickets) => {
+  setTickets: (incoming) => {
+    const rows = Array.isArray(incoming) ? incoming : [];
+    const { activeProject, ticketStates: prevStates } = get();
     const ticketStates = {};
-    for (const t of tickets) {
+    for (const t of rows) {
+      const prev = prevStates[t.id] || {};
       ticketStates[t.id] = {
         ...initialTicketState(),
-        status: t.status || 'pending',
-        output: t.output || '',
-        prUrl: t.pr_url || '',
-        tasks: t.tasks_json ? JSON.parse(t.tasks_json) : [],
+        ...prev,
+        status: t.status || prev.status || 'pending',
+        output: t.output || prev.output || '',
+        prUrl: t.pr_url || prev.prUrl || '',
+        boardLane: t.board_lane || prev.boardLane || 'todo',
+        tasks: (() => {
+          if (!t.tasks_json) return prev.tasks || [];
+          try {
+            return JSON.parse(t.tasks_json);
+          } catch {
+            return prev.tasks || [];
+          }
+        })(),
       };
     }
-    set({ tickets, ticketStates });
+    const withModel = rows.map(t => ({
+      ...t,
+      assigned_provider: t.assigned_provider || t.project_provider || activeProject?.provider,
+      assigned_model: t.assigned_model || t.project_model || activeProject?.model,
+    }));
+    set({ tickets: withModel, ticketStates });
   },
+
+  mergeTickets: (incoming) => {
+    const rows = Array.isArray(incoming) ? incoming : [];
+    const { tickets } = get();
+    const byId = new Map(tickets.map(t => [t.id, t]));
+    for (const t of rows) {
+      byId.set(t.id, { ...byId.get(t.id), ...t });
+    }
+    get().setTickets([...byId.values()]);
+  },
+
+  syncTicketsFromApi: async (projectId) => {
+    if (!projectId || isDemoProjectId(projectId)) return;
+    try {
+      const rows = await listTickets(projectId);
+      get().setTickets(rows);
+    } catch (e) {
+      console.warn('Failed to sync tickets', e);
+    }
+  },
+
+  syncGlobalBoardTickets: async () => {
+    try {
+      const data = await listGlobalBoardTickets();
+      get().setTickets(data.tickets || []);
+      return data;
+    } catch (e) {
+      console.warn('Failed to sync global board tickets', e);
+      return { tickets: [], project_count: 0 };
+    }
+  },
+
+  updateTicketRow: (ticketId, patch) => set(s => ({
+    tickets: s.tickets.map(t => t.id === ticketId ? { ...t, ...patch } : t),
+  })),
+
+  removeDemoTicket: (ticketId) => set(s => ({
+    tickets: s.tickets.filter(t => t.id !== ticketId),
+    ticketStates: Object.fromEntries(
+      Object.entries(s.ticketStates).filter(([id]) => id !== ticketId),
+    ),
+  })),
+
+  addDemoTicket: (payload) => set(s => {
+    const id = `demo-${Date.now().toString(36)}`;
+    const key = payload.ticket_key || `DEMO-${s.tickets.length + 1}`;
+    const row = {
+      id,
+      ticket_key: key,
+      title: payload.manual?.title || key,
+      description: payload.manual?.description || '',
+      acceptance_criteria: payload.manual?.acceptance_criteria || '',
+      jira_url: payload.jira_url || '',
+      status: 'pending',
+      board_lane: 'todo',
+      assigned_provider: s.activeProject?.provider || 'ollama',
+      assigned_model: s.activeProject?.model || 'codestral',
+    };
+    return {
+      tickets: [...s.tickets, row],
+      ticketStates: {
+        ...s.ticketStates,
+        [id]: { ...initialTicketState(), boardLane: 'todo' },
+      },
+    };
+  }),
 
   resetRun: () => set({
     agentStates: initialAgentState(),
@@ -81,6 +170,12 @@ export const useProjectStore = create((set, get) => ({
     ticketStates: {},
     tickets: [],
     activeTicketId: null,
+  }),
+
+  clearBoardRunState: () => set({
+    ticketStates: {},
+    activeTicketId: null,
+    feedMessages: [],
   }),
 
   handleWsEvent: (event) => {
@@ -128,6 +223,8 @@ export const useProjectStore = create((set, get) => ({
           ts.active = false;
         } else if (type === 'pr_created') {
           ts.prUrl = data;
+        } else if (type === 'board_lane') {
+          ts.boardLane = data;
         } else if (type === 'error') {
           ts.status = 'error';
           ts.active = false;
@@ -138,6 +235,11 @@ export const useProjectStore = create((set, get) => ({
 
         return {
           ticketStates: { ...s.ticketStates, [ticketId]: ts },
+          tickets: type === 'board_lane'
+            ? s.tickets.map(t => t.id === ticketId ? { ...t, board_lane: data } : t)
+            : type === 'pr_created'
+              ? s.tickets.map(t => t.id === ticketId ? { ...t, pr_url: data } : t)
+              : s.tickets,
           activeTicketId: ts.active ? ticketId : s.activeTicketId,
           feedMessages: [
             ...s.feedMessages,
@@ -152,6 +254,12 @@ export const useProjectStore = create((set, get) => ({
           ],
         };
       });
+      if (['ticket_start', 'ticket_done', 'board_lane', 'pr_created', 'error'].includes(type)) {
+        const projectId = get().activeProject?.id;
+        if (projectId && !isDemoProjectId(projectId)) {
+          get().syncTicketsFromApi(projectId);
+        }
+      }
       return;
     }
 

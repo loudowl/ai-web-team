@@ -1,35 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Settings, FileText, Github, ExternalLink, X, Trash2 } from 'lucide-react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { ChevronLeft, Settings, FileText, Github, ExternalLink, X, Trash2, LogOut } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import AgentKanban from '../components/AgentKanban';
 import ActivityFeed from '../components/ActivityFeed';
-import TicketBoard from '../components/TicketBoard';
-import TicketProgressGrid from '../components/TicketProgressGrid';
+import TicketSwimBoard from '../components/TicketSwimBoard';
+import BoardMemoryMeter from '../components/BoardMemoryMeter';
 import TicketModal from '../components/TicketModal';
 import { connectWS, getProject, pushToGitHub, listTickets, deleteProject } from '../services/api';
 import { useProjectStore } from '../store/projectStore';
 import { useUiStore } from '../store/uiStore';
+import { useBoardStore } from '../store/boardStore';
 import { isDemoProjectId } from '../demo/demoData';
-import { startDemoSimulation, getDemoProject, getDemoTickets } from '../demo/demoSimulator';
+import { getDemoProject, getDemoTickets } from '../demo/demoSimulator';
 
 export default function ProjectPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId } = useParams();
 
   const {
     activeProject, setActiveProject,
-    agentStates, handleWsEvent, setWs, setTickets, resetRun,
+    agentStates, handleWsEvent, setWs, setTickets, resetRun, syncTicketsFromApi,
     tickets, ticketStates,
     AGENTS, AGENT_META,
   } = useProjectStore();
 
   const { interfaceMode, endDemo } = useUiStore();
+  const { resetDemoBoard } = useBoardStore();
 
   const wsRef = useRef(null);
-  const demoStopRef = useRef(null);
   const [project, setProject]         = useState(activeProject);
   const [modalAgent, setModalAgent]   = useState(null);
   const [modalTicketId, setModalTicketId] = useState(null);
@@ -37,14 +39,16 @@ export default function ProjectPage() {
   const [deleting, setDeleting]       = useState(false);
 
   const isDemo = isDemoProjectId(projectId);
-  const isMinimal = interfaceMode === 'minimal' || isDemo;
-  const isJira = project?.mode === 'jira' || isDemo;
+  const isBoardRoute = location.pathname.startsWith('/board/');
+  const isJiraBoard = isDemo || isBoardRoute || project?.mode === 'jira';
+  const isMinimal = interfaceMode === 'minimal' || isJiraBoard;
+  const isJira = isJiraBoard;
+  const showMemoryMeter = isJira && (isDemo || project?.provider === 'ollama');
   const canDelete = !isDemo && ['pending', 'running', 'error', 'done'].includes(project?.status);
 
   const exitDemo = () => {
-    demoStopRef.current?.();
-    demoStopRef.current = null;
     wsRef.current?.close();
+    resetDemoBoard();
     endDemo();
     resetRun();
     navigate('/', { replace: true });
@@ -54,21 +58,15 @@ export default function ProjectPage() {
     let mounted = true;
 
     if (isDemo) {
+      resetDemoBoard();
       const demoProject = getDemoProject();
       const demoTickets = getDemoTickets();
       setProject(demoProject);
       setActiveProject(demoProject);
       setTickets(demoTickets);
 
-      demoStopRef.current = startDemoSimulation(
-        (event) => { handleWsEvent(event); },
-        (updated) => { if (mounted) setProject(updated); },
-      );
-
       return () => {
         mounted = false;
-        demoStopRef.current?.();
-        demoStopRef.current = null;
       };
     }
 
@@ -76,24 +74,23 @@ export default function ProjectPage() {
       if (!mounted) return;
       setProject(p);
       setActiveProject(p);
-      if (p?.mode === 'jira') {
-        listTickets(projectId).then(t => { if (mounted) setTickets(t); });
-      }
     }).catch(() => {
       if (mounted) navigate('/', { replace: true });
     });
+
+    listTickets(projectId)
+      .then(t => { if (mounted) setTickets(t); })
+      .catch(e => console.warn('Failed to load tickets', e));
 
     const ws = connectWS(
       projectId,
       (event) => { handleWsEvent(event); },
       () => {
+        syncTicketsFromApi(projectId);
         getProject(projectId).then(p => {
           if (!mounted) return;
           setProject(p);
           setActiveProject(p);
-          if (p?.mode === 'jira') {
-            listTickets(projectId).then(t => setTickets(t));
-          }
         }).catch(() => {});
       }
     );
@@ -182,7 +179,7 @@ export default function ProjectPage() {
   return (
     <div className={`screen${isMinimal ? ' minimal-project' : ''}`}>
       <div className="navbar">
-        <button className="icon-btn" type="button" onClick={() => (isDemo ? exitDemo() : navigate(-1))}>
+        <button className="icon-btn" type="button" onClick={() => (isDemo ? exitDemo() : isJira ? navigate('/') : navigate(-1))}>
           <ChevronLeft size={24} color="#58a6ff" />
         </button>
         <div className="nav-center">
@@ -195,10 +192,17 @@ export default function ProjectPage() {
             <span className="chip" style={{ marginLeft: 8, fontSize: 9, color: '#58a6ff', borderColor: '#58a6ff' }}>JIRA</span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="nav-actions">
           {isDemo ? (
-            <button type="button" className="btn-outline demo-exit-btn" onClick={exitDemo}>
-              Exit demo
+            <button
+              type="button"
+              className="demo-exit-btn"
+              onClick={exitDemo}
+              title="Leave demo mode"
+              aria-label="Leave demo mode"
+            >
+              <LogOut size={14} strokeWidth={2.25} aria-hidden="true" />
+              <span>Exit demo</span>
             </button>
           ) : (
             <>
@@ -217,16 +221,24 @@ export default function ProjectPage() {
 
       {isDemo && (
         <div className="demo-banner">
-          Sample data only — no backend, no real PRs. Exit demo to clear.
+          Sample data only — launch tickets from the board. Drag to Dev Complete when merged.
         </div>
       )}
 
-      {isMinimal && isJira ? (
-        <div className="content minimal-ticket-scroll">
-          <TicketProgressGrid onTicketPress={setModalTicketId} />
+      {isJira && !isDemo && (
+        <div className="jira-banner">
+          Launch tickets from the board — all added tickets stay visible across To Do, In Progress, and review lanes.
         </div>
-      ) : isJira ? (
-        <TicketBoard onTicketPress={setModalTicketId} />
+      )}
+
+      {showMemoryMeter && (
+        <BoardMemoryMeter projectId={projectId} model={project?.model} />
+      )}
+
+      {isJira ? (
+        <div className={`content swim-board-scroll${isMinimal ? ' minimal-ticket-scroll' : ''}`}>
+          <TicketSwimBoard projectId={projectId} onTicketPress={setModalTicketId} />
+        </div>
       ) : (
         <AgentKanban onAgentPress={key => setModalAgent(key)} />
       )}

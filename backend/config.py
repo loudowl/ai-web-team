@@ -33,6 +33,7 @@ AGENT_MODELS = {
     "architect":  os.getenv("ARCHITECT_MODEL",  ""),
     "developer":  os.getenv("DEVELOPER_MODEL",  ""),
     "senior_dev": SENIOR_DEV_MODEL,
+    "code_reviewer": os.getenv("CODE_REVIEW_MODEL", "") or SENIOR_DEV_MODEL,
 }
 
 # Per-agent reasoning effort for OpenAI reasoning models (Responses API).
@@ -44,6 +45,7 @@ AGENT_REASONING_EFFORT = {
     "architect":  os.getenv("ARCHITECT_EFFORT", "high"),
     "developer":  os.getenv("DEVELOPER_EFFORT", "high"),
     "senior_dev": os.getenv("SENIOR_DEV_EFFORT", "high"),
+    "code_reviewer": os.getenv("CODE_REVIEW_EFFORT", "medium"),
 }
 
 # Default provider: "openai" | "anthropic" | "ollama"
@@ -61,8 +63,18 @@ REPO_CONTEXT_PATH    = os.getenv("REPO_CONTEXT_PATH", "")
 
 # Jira PR workflow
 GITHUB_BASE_BRANCH   = os.getenv("GITHUB_BASE_BRANCH", "")   # auto-detect from origin if empty
+JIRA_COLLAB_BRANCH_PREFIX = os.getenv("JIRA_COLLAB_BRANCH_PREFIX", "collab/release")
 JIRA_BRANCH_PREFIX   = os.getenv("JIRA_BRANCH_PREFIX", "codex")
 JIRA_BRANCH_SUFFIX   = os.getenv("JIRA_BRANCH_SUFFIX", "")
+
+# Lint + PR review workflow (Jira mode)
+JIRA_LINT_ENABLED        = os.getenv("JIRA_LINT_ENABLED", "true").lower() in ("1", "true", "yes")
+JIRA_LINT_COMMAND        = os.getenv("JIRA_LINT_COMMAND", "npm run lint")
+JIRA_LINT_FIX_COMMAND    = os.getenv("JIRA_LINT_FIX_COMMAND", "npm run lint:fix")
+JIRA_LINT_MAX_ROUNDS     = max(1, int(os.getenv("JIRA_LINT_MAX_ROUNDS", "2")))
+JIRA_COPILOT_REVIEW      = os.getenv("JIRA_COPILOT_REVIEW", "true").lower() in ("1", "true", "yes")
+JIRA_COPILOT_WAIT_SEC    = max(0, int(os.getenv("JIRA_COPILOT_WAIT_SEC", "90")))
+JIRA_COPILOT_MAX_ROUNDS  = max(1, int(os.getenv("JIRA_COPILOT_MAX_ROUNDS", "1")))
 
 # ── GitHub ─────────────────────────────────────────────────────────────────────
 GITHUB_TOKEN       = os.getenv("GITHUB_TOKEN", "")

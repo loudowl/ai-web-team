@@ -1,37 +1,85 @@
 # ai-web-team
 
-A multi-agent AI system that turns a plain-English project brief into a fully scaffolded web app — with a mobile interface to watch it happen in real time.
+A multi-agent AI system for two workflows:
 
-Describe what you want to build. Four specialized AI agents collaborate, each building on the last's output. When they're done, push the result directly to a new GitHub repo.
+1. **Greenfield** — turn a plain-English brief into a scaffolded web app (PM → Designer → Architect → Developer).
+2. **Jira mode** — run a senior coding agent per ticket against a real repo: plan, implement, lint, open PRs, and track work on a swim board.
 
-![React Native](https://img.shields.io/badge/React_Native-Expo-000020?logo=expo&logoColor=white)
+Watch agents work in real time via the **web UI** (primary) or the **Expo mobile app**.
+
+![React](https://img.shields.io/badge/Web-React%20%2B%20Vite-61DAFB?logo=react&logoColor=white)
+![React Native](https://img.shields.io/badge/Mobile-Expo-000020?logo=expo&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-black)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/Anthropic-Claude-CC785C)
 
+Repo: [github.com/loudowl/ai-web-team](https://github.com/loudowl/ai-web-team)
+
 ---
 
-## The Agent Team
+## Modes
+
+### Greenfield (4-agent pipeline)
 
 | Agent | Role | Output |
 |---|---|---|
-| 📋 **Project Manager** | Translates brief → structured PRD | Requirements, user stories, priorities |
-| 🎨 **Designer** | PRD → design brief | Color palette, typography, component list, screen layouts |
-| 🏗️ **Architect** | PRD + design → tech architecture | Stack decisions, folder structure, API contracts, data models |
-| 💻 **Developer** | All above → working code | Complete, runnable implementation files |
+| 📋 **Project Manager** | Brief → structured PRD | Requirements, user stories, priorities |
+| 🎨 **Designer** | PRD → design brief | Palette, typography, layouts |
+| 🏗️ **Architect** | PRD + design → architecture | Stack, folders, API contracts |
+| 💻 **Developer** | All above → code | Runnable implementation |
 
-Each agent receives the previous agents' output as context, building a coherent system rather than working in isolation.
+Each agent receives prior agents' output as context. When finished, push to a new GitHub repo from the UI.
+
+### Jira mode (ticket swim board)
+
+A **senior_dev** agent runs per ticket in isolated git worktrees:
+
+- Fetch ticket from Jira (or paste key / URL / manual text)
+- Gather repo context, analyze, implement, apply patches
+- Run lint fix loop (optional)
+- Commit, push, open PR
+- Address Copilot review (optional, workflow-dependent)
+
+**Board lanes:** To Do → In Progress → In Review → Dev Complete
+
+**Workflows per ticket:**
+
+| Workflow | Lint | Copilot review |
+|---|---|---|
+| Simple fix | ✓ | ✓ |
+| Fix | ✓ | — |
+| Full cycle | ✓ | ✓ (extended wait) |
+
+**Collab branches:** Jira fix versions map to `collab/release-{version}` (prefix configurable) for worktree base and PR target.
+
+---
+
+## Web UI
+
+The web app (`web/`) is the main interface:
+
+- **Dashboard** — stats, Jira batches, greenfield sessions, quick actions
+- **Global nav** — Home · New Jira project · Jira board · Settings
+- **Jira board** (`/board`) — all non-archived tickets across batches in one swim board
+- **Per-batch board** (`/board/:projectId`) — tickets for one batch
+- **Ollama memory meter** — RAM budget as tickets move to In Progress
+- **Model pull modal** — if an assigned Ollama model is missing, download it in-app with progress, then auto-start the run
+- **Demo mode** — sample swim board without backend
+
+Floating **+** on the dashboard opens a new greenfield project. **Jira ticket** / **Greenfield** buttons launch the corresponding new-project flows.
 
 ---
 
 ## Mobile UI
 
-The app combines two views:
+The Expo app (`mobile/`) provides:
 
-**Kanban board** — top strip showing all 4 agents as cards. Each card shows the agent's current status (Waiting / Working / Done), a pulsing border when active, and a preview of their output. Tap any card to read the full output.
+- **Kanban board** — four greenfield agents with live status
+- **Activity feed** — streaming tokens and events
+- **Settings** — Ollama model list, pull progress, delete
 
-**Activity feed** — scrolling chat-style log showing each agent event as it arrives, with live streaming tokens from the active agent rendered in real time with a blinking cursor.
+Use your machine's LAN IP in `EXPO_PUBLIC_API_URL` when testing on a physical device.
 
 ---
 
@@ -43,8 +91,26 @@ The app combines two views:
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # fill in your keys
+cp .env.example .env   # fill in keys + Jira/repo paths for Jira mode
 python main.py
+```
+
+API default: `http://localhost:3001`
+
+### Web
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+UI default: `http://localhost:5173`
+
+Optional `web/.env`:
+
+```
+VITE_API_URL=http://localhost:3001
 ```
 
 ### Mobile
@@ -56,25 +122,30 @@ cp .env.example .env
 npx expo start
 ```
 
-Scan the QR code with Expo Go, or press `i` for iOS simulator / `a` for Android.
-
 ---
 
 ## Configuration
 
-### Backend `.env`
+### Backend `.env` (highlights)
 
-| Variable | Required | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | Optional | GPT-4o access |
-| `ANTHROPIC_API_KEY` | Optional | Claude access |
-| `OLLAMA_BASE_URL` | Optional | Ollama server (default: localhost:11434) |
-| `OLLAMA_MODEL` | Optional | Default Ollama model (default: llama3.2) |
-| `DEFAULT_PROVIDER` | Optional | `openai` / `anthropic` / `ollama` |
-| `GITHUB_TOKEN` | Optional | For push-to-GitHub feature |
-| `GITHUB_USERNAME` | Optional | Your GitHub username |
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI via Responses API |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Claude |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Local Ollama (default port 11434) |
+| `DEFAULT_PROVIDER` | `openai` · `anthropic` · `ollama` |
+| `GITHUB_TOKEN` / `GITHUB_USERNAME` | Push greenfield projects + Jira PRs |
+| `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` | Jira API (optional; paste works too) |
+| `REPO_CONTEXT_PATH` | Path to target repo for Jira worktrees |
+| `JIRA_COLLAB_BRANCH_PREFIX` | e.g. `collab/release` → `collab/release-11.5.0` |
+| `SENIOR_DEV_MODEL` | Override coding model for Jira runs |
+| `JIRA_MAX_PARALLEL` | Concurrent ticket runs (default 1 for Ollama) |
+| `OLLAMA_NUM_CTX` / `OLLAMA_KEEP_ALIVE` | Tune local RAM / unload behavior |
+| `RELOAD` | Set `false` during long Jira runs to avoid uvicorn reload |
 
-At least one LLM provider must be configured. Ollama requires `llama3.2` or similar to be pulled locally.
+See `backend/.env.example` for lint, Copilot review, and per-agent overrides.
+
+At least one LLM provider must be configured. For Jira mode with Ollama, pull a coding model first (e.g. `ollama pull codestral`) or use the in-app download prompt.
 
 ### Mobile `.env`
 
@@ -82,16 +153,18 @@ At least one LLM provider must be configured. Ollama requires `llama3.2` or simi
 EXPO_PUBLIC_API_URL=http://YOUR_MACHINE_IP:3001
 ```
 
-Use your machine's local IP (not `localhost`) when running on a physical device.
-
 ---
 
-## Model Manager
+## Model manager
 
-The Settings screen lets you manage Ollama models directly from the app:
-- View all installed models with file sizes
-- Pull new models (with live progress bar)
-- Delete models you no longer need
+From **Settings** (web or mobile):
+
+- List installed Ollama models and sizes
+- Pull models with live progress (SSE)
+- Delete models
+- Memory meter (web board) estimates concurrent ticket RAM
+
+Recommended local coding models: **codestral**, **devstral**, **qwen2.5-coder**, **deepseek-coder-v2**.
 
 ---
 
@@ -100,42 +173,40 @@ The Settings screen lets you manage Ollama models directly from the app:
 ```
 ai-web-team/
 ├── backend/
-│   ├── main.py                 FastAPI entry point
-│   ├── config.py               Environment config
-│   ├── database.py             SQLite (projects, agent runs, artifacts)
+│   ├── main.py
+│   ├── config.py
+│   ├── database.py              SQLite: projects, tickets, agent runs
 │   ├── agents/
-│   │   ├── runner.py           Pipeline orchestrator + WebSocket streaming
-│   │   └── prompts.py          System prompts + prompt builders per agent
+│   │   ├── runner.py            Greenfield pipeline
+│   │   ├── jira_runner.py       Per-ticket Jira agent + board replay
+│   │   └── prompts.py
 │   ├── models/
-│   │   └── providers.py        OpenAI / Anthropic / Ollama streaming
+│   │   ├── providers.py         OpenAI / Anthropic / Ollama streaming
+│   │   ├── model_catalog.py     Curated model picker metadata
+│   │   └── coding_agents.py
 │   ├── routes/
-│   │   ├── projects.py         REST: CRUD + GitHub push
-│   │   ├── models.py           REST: Ollama model management
-│   │   └── ws.py               WebSocket: real-time pipeline events
+│   │   ├── projects.py
+│   │   ├── board.py             Per-project board API (run, archive, lanes)
+│   │   ├── board_global.py      All-tickets board API
+│   │   ├── models.py            Ollama pull / check / memory
+│   │   └── ws.py                WebSocket events
 │   └── utils/
-│       └── github_push.py      GitHub Contents API integration
-└── mobile/
-    ├── App.js                  Navigation root
-    └── src/
-        ├── screens/
-        │   ├── HomeScreen.js       Project list
-        │   ├── NewProjectScreen.js  Brief input + provider selection
-        │   ├── ProjectScreen.js     Kanban + activity feed + actions
-        │   └── SettingsScreen.js    Model manager + config
-        ├── components/
-        │   ├── AgentKanban.js       4-agent status board
-        │   └── ActivityFeed.js      Streaming chat-style event log
-        ├── store/
-        │   └── projectStore.js      Zustand state (agents, feed, WS)
-        └── services/
-            └── api.js               Axios + WebSocket client
+│       ├── git_worktree.py
+│       ├── github_pr.py
+│       ├── jira_client.py
+│       ├── collab_branch.py
+│       ├── lint_runner.py
+│       └── repo_context.py
+├── web/                         Vite + React dashboard & swim board
+└── mobile/                      Expo client
 ```
 
 ---
 
 ## Stack
 
-- **Backend**: Python 3.11 · FastAPI · WebSockets · SQLite
-- **LLMs**: OpenAI GPT-4o · Anthropic Claude · Ollama (local)
-- **Mobile**: React Native · Expo · Zustand · react-native-markdown-display
-- **GitHub integration**: GitHub Contents API (no git binary required)
+- **Backend:** Python 3.11+ · FastAPI · WebSockets · SQLite
+- **Web:** React 18 · Vite · React Router · Zustand · Lucide
+- **Mobile:** React Native · Expo · Zustand
+- **LLMs:** OpenAI · Anthropic · Ollama
+- **Git:** worktrees, GitHub PR API, optional Contents API push (greenfield)

@@ -1,16 +1,17 @@
 """Routes for Ollama model management."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model, ollama_memory_status
+from models.providers import ollama_list_models, ollama_pull_model, ollama_delete_model, ollama_memory_status, resolve_ollama_model, ollama_missing_info
 from models.coding_agents import (
     get_recommended_models,
     get_excluded_models,
     pick_best_installed,
     is_excluded_model,
 )
+from models.model_catalog import get_provider_choices, validate_model_choice
 import config
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -31,9 +32,28 @@ def list_models():
 
 
 @router.get("/ollama/memory")
-def ollama_memory():
-    """Live Ollama RAM usage from /api/ps plus installed model disk footprint."""
-    return ollama_memory_status()
+def ollama_memory(
+    model: str | None = Query(None, description="Project model for per-ticket budget"),
+    in_progress: int = Query(0, ge=0, description="Tickets currently in the In Progress lane"),
+):
+    """Live Ollama RAM usage from /api/ps plus optional concurrent-ticket budget."""
+    return ollama_memory_status(model=model, in_progress=in_progress)
+
+
+@router.get("/ollama/check")
+def check_ollama_model(model: str = Query(..., description="Catalog id or Ollama tag")):
+    """Return whether a model is installed locally, plus pull metadata if missing."""
+    try:
+        tag = resolve_ollama_model(model, allow_fallback=False)
+        return {"installed": True, "model": model, "tag": tag}
+    except RuntimeError:
+        return {**ollama_missing_info(model), "installed": False}
+
+
+@router.get("/provider-choices")
+def provider_model_choices():
+    """Curated model options per provider for the New Project page."""
+    return get_provider_choices()
 
 
 @router.get("/coding-agents")

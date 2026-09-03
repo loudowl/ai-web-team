@@ -53,12 +53,23 @@ def format_ticket_block(ticket: dict) -> str:
     if not ac:
         ac = "See description — extract acceptance criteria from the description below."
 
+    fix_version = (ticket.get("fix_version") or "").strip()
+    collab_branch = (ticket.get("collab_branch") or "").strip()
+    release_lines = []
+    if fix_version:
+        release_lines.append(f"**Fix version:** {fix_version}")
+    if collab_branch:
+        release_lines.append(f"**Target collab branch:** `{collab_branch}` (PR base)")
+    release_block = ""
+    if release_lines:
+        release_block = "\n".join(release_lines) + "\n"
+
     return f"""# ACTIVE JIRA TICKET (authoritative — implement ONLY this)
 
 **Key:** {ticket.get("key", "N/A")}
 **Title:** {ticket.get("title", "")}
 **URL:** {ticket.get("jira_url", "n/a")}
-
+{release_block}
 ## Description
 {ticket.get("description", "").strip()}
 

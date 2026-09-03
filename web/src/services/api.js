@@ -15,6 +15,29 @@ export const createProject = (payload) =>
 export const listTickets = (projectId) =>
   api.get(`/api/projects/${projectId}/tickets`).then(r => r.data.tickets);
 
+export const addBoardTicket = (projectId, payload) =>
+  api.post(`/api/projects/${projectId}/tickets`, payload).then(r => r.data);
+
+export const updateTicketLane = (projectId, ticketId, boardLane) =>
+  api.patch(`/api/projects/${projectId}/tickets/${ticketId}`, { board_lane: boardLane }).then(r => r.data);
+
+export const archiveTicket = (projectId, ticketId) =>
+  api.patch(`/api/projects/${projectId}/tickets/${ticketId}`, { archive: true }).then(r => r.data);
+
+export const runBoardTicket = (projectId, ticketId, workflow = 'simple') =>
+  api.post(`/api/projects/${projectId}/tickets/${ticketId}/run`, { workflow }).then(r => r.data);
+
+export const listArchivedTickets = (projectId) =>
+  projectId
+    ? api.get(`/api/projects/${projectId}/tickets/archived`).then(r => r.data.tickets)
+    : api.get('/api/projects/archived/tickets').then(r => r.data.tickets);
+
+export const listGlobalBoardTickets = () =>
+  api.get('/api/board/tickets').then(r => r.data);
+
+export const getDefaultJiraProject = () =>
+  api.get('/api/board/default-project').then(r => r.data);
+
 export const getProject = (id) =>
   api.get(`/api/projects/${id}`).then(r => r.data);
 
@@ -38,14 +61,22 @@ export const pushToGitHub = (id) =>
 export const listModels = () =>
   api.get('/api/models').then(r => r.data);
 
+export const listProviderChoices = () =>
+  api.get('/api/models/provider-choices').then(r => r.data);
+
 export const listCodingAgents = () =>
   api.get('/api/models/coding-agents').then(r => r.data);
 
 export const deleteModel = (model) =>
   api.delete('/api/models', { data: { model } }).then(r => r.data);
 
-export const getOllamaMemory = () =>
-  api.get('/api/models/ollama/memory').then(r => r.data);
+export const getOllamaMemory = ({ model, inProgress } = {}) =>
+  api.get('/api/models/ollama/memory', {
+    params: {
+      ...(model ? { model } : {}),
+      in_progress: inProgress ?? 0,
+    },
+  }).then(r => r.data);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 export const WS_URL = API_URL.replace(/^http/, 'ws');

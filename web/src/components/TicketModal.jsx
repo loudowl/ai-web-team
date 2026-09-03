@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { useProjectStore } from '../store/projectStore';
 import ThinkingIndicator, { getTicketActivity } from './ThinkingIndicator';
 import { isDemoProjectId } from '../demo/demoData';
+import { formatModelAssignment, workflowLabel } from '../utils/modelPicker';
 
 const DEMO_PR_PLACEHOLDER = 'https://github.com/foxnews/fts-foxnews.com';
 
@@ -19,16 +20,48 @@ export default function TicketModal({ ticketId, onClose }) {
   const prHref = isDemo ? DEMO_PR_PLACEHOLDER : realPrUrl;
   const showPrButton = isDone && !!prHref;
 
+  const modelAssignment = formatModelAssignment(
+    ticket?.assigned_provider || activeProject?.provider,
+    ticket?.assigned_model || activeProject?.model,
+  );
+  const workflow = ticket?.workflow;
+
   if (!ticket) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">
-            🎫 {ticket.ticket_key || ticket.id} — {ticket.title}
-          </span>
-          <button className="icon-btn" onClick={onClose}>
+          <div className="ticket-modal-heading">
+            <span className="modal-title">
+              🎫 {ticket.ticket_key || ticket.id} — {ticket.title}
+            </span>
+            <div className="ticket-modal-meta">
+              <div className="ticket-modal-meta-item">
+                <span className="ticket-modal-meta-label">Coding model</span>
+                <span className="ticket-modal-model-chip">{modelAssignment.summary}</span>
+              </div>
+              {workflow && (
+                <div className="ticket-modal-meta-item">
+                  <span className="ticket-modal-meta-label">Workflow</span>
+                  <span className="ticket-modal-workflow-chip">{workflowLabel(workflow)}</span>
+                </div>
+              )}
+              {ticket.fix_version && (
+                <div className="ticket-modal-meta-item">
+                  <span className="ticket-modal-meta-label">Fix version</span>
+                  <span className="ticket-modal-meta-value">{ticket.fix_version}</span>
+                </div>
+              )}
+              {ticket.collab_branch && (
+                <div className="ticket-modal-meta-item">
+                  <span className="ticket-modal-meta-label">Base branch</span>
+                  <span className="ticket-modal-meta-value mono">{ticket.collab_branch}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <button className="icon-btn" type="button" onClick={onClose}>
             <X size={24} color="#e6edf3" />
           </button>
         </div>
@@ -70,7 +103,7 @@ export default function TicketModal({ ticketId, onClose }) {
           <div className="markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {ts.output || (isRunning
-                ? '_Waiting for model output — local Codestral can take several minutes before the first token appears._'
+                ? `_Waiting for model output — local Codestral can take several minutes before the first token appears._`
                 : ticket.description || '_Waiting for agent output…_')}
             </ReactMarkdown>
           </div>

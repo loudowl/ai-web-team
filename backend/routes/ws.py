@@ -1,4 +1,4 @@
-"""WebSocket endpoint — streams agent pipeline events to the mobile app."""
+"""WebSocket endpoint — streams agent pipeline events to the web app."""
 
 import asyncio
 import json
@@ -6,12 +6,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 import database as db
 from agents.runner import run_pipeline
-from agents.jira_runner import run_jira_pipeline
+from agents.jira_runner import run_jira_pipeline, replay_board_state
+from routes.ws_hub import register, unregister, broadcast
 
 router = APIRouter()
-
-# Active connections: project_id → list of WebSockets
-_connections: dict[str, list[WebSocket]] = {}
 
 
 @router.websocket("/ws/{project_id}")
@@ -24,24 +22,17 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
         await websocket.close()
         return
 
-    # Register connection
-    _connections.setdefault(project_id, []).append(websocket)
+    register(project_id, websocket)
 
     async def send(msg: str):
-        """Broadcast to all connected sockets for this project."""
-        for ws in list(_connections.get(project_id, [])):
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                pass
+        await broadcast(project_id, msg)
 
     try:
         mode = project.get("mode") or "greenfield"
 
-        # If pipeline already ran, replay artifacts and close
         if project["status"] == "done":
             if mode == "jira":
-                tickets = db.list_tickets(project_id)
+                tickets = db.list_tickets(project_id, include_archived=False)
                 for t in tickets:
                     if t.get("output"):
                         await send(json.dumps({
@@ -57,12 +48,12 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
                             "ticket_id": t["id"],
                             "data": t["pr_url"],
                         }))
-                    if t.get("tasks_json"):
+                    if t.get("board_lane"):
                         await send(json.dumps({
-                            "type": "tasks",
-                            "agent": "senior_dev",
+                            "type": "board_lane",
+                            "agent": "system",
                             "ticket_id": t["id"],
-                            "data": t["tasks_json"],
+                            "data": t["board_lane"],
                         }))
             else:
                 agents = db.get_agent_runs(project_id)
@@ -76,7 +67,16 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
             await send(json.dumps({"type": "pipeline_done", "agent": "system", "data": "Pipeline already complete."}))
             return
 
+        if mode == "jira" and project["status"] in ("pending", "ready", "running"):
+            if project["status"] == "pending":
+                db.update_project(project_id, status="ready")
+            await replay_board_state(project_id, send)
+            while True:
+                await websocket.receive_text()
+            return
+
         if mode == "jira":
+            # Legacy: auto-run all tickets (avoid for board batches — use per-ticket launch)
             await run_jira_pipeline(project_id=project_id, send=send)
         else:
             await run_pipeline(
@@ -84,11 +84,10 @@ async def ws_pipeline(websocket: WebSocket, project_id: str):
                 brief=project["brief"],
                 provider=project["provider"],
                 send=send,
+                model=project.get("model"),
             )
 
     except WebSocketDisconnect:
         pass
     finally:
-        conns = _connections.get(project_id, [])
-        if websocket in conns:
-            conns.remove(websocket)
+        unregister(project_id, websocket)

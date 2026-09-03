@@ -1,16 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getOllamaMemory } from '../services/api';
-
-function formatGB(bytes) {
-  if (!bytes) return '0 GB';
-  return `${(bytes / 1e9).toFixed(1)} GB`;
-}
-
-function meterColor(pct) {
-  if (pct >= 75) return '#f85149';
-  if (pct >= 50) return '#d29922';
-  return '#3fb950';
-}
+import { formatGB, meterColor } from '../utils/memoryFormat';
 
 export default function OllamaMemoryMeter({ pollMs = 4000 }) {
   const [stats, setStats] = useState(null);
@@ -56,15 +46,16 @@ export default function OllamaMemoryMeter({ pollMs = 4000 }) {
     );
   }
 
-  const pct = stats.loaded_pct || 0;
-  const fill = stats.system_ram_bytes
-    ? Math.min(100, pct)
-    : stats.loaded_bytes
-      ? Math.min(100, (stats.loaded_bytes / 32e9) * 100)
-      : 0;
-  const color = meterColor(fill);
+  const systemRam = stats.system_ram_bytes || 0;
+  const budgetedBytes = stats.budgeted_bytes ?? stats.loaded_bytes ?? 0;
+  const remainingBytes = stats.remaining_bytes
+    ?? (systemRam ? Math.max(0, systemRam - budgetedBytes) : 0);
+  const pct = systemRam
+    ? Math.min(100, (budgetedBytes / systemRam) * 100)
+    : stats.loaded_pct || 0;
+  const color = meterColor(pct);
   const loadedLabel = formatGB(stats.loaded_bytes);
-  const totalLabel = stats.system_ram_bytes ? formatGB(stats.system_ram_bytes) : 'system RAM';
+  const totalLabel = systemRam ? formatGB(systemRam) : 'system RAM';
   const status = stats.running?.length
     ? `${stats.running.length} model${stats.running.length === 1 ? '' : 's'} loaded`
     : 'Idle — no models loaded';
@@ -76,16 +67,19 @@ export default function OllamaMemoryMeter({ pollMs = 4000 }) {
           <div className="memory-meter-label">Ollama memory</div>
           <div className="memory-meter-value">
             <span style={{ color }}>{loadedLabel}</span>
-            {stats.system_ram_bytes ? (
+            {systemRam ? (
               <span className="memory-meter-total"> / {totalLabel} system</span>
             ) : null}
           </div>
+          {systemRam > 0 && (
+            <div className="memory-meter-remaining">{formatGB(remainingBytes)} remaining</div>
+          )}
         </div>
-        <div className="memory-meter-pct" style={{ color }}>{fill.toFixed(0)}%</div>
+        <div className="memory-meter-pct" style={{ color }}>{pct.toFixed(0)}%</div>
       </div>
 
       <div className="memory-bar" aria-label={`Ollama using ${loadedLabel}`}>
-        <div className="memory-bar-fill" style={{ width: `${fill}%`, background: color }} />
+        <div className="memory-bar-fill" style={{ width: `${pct}%`, background: color }} />
       </div>
 
       <div className="memory-meter-meta">{status}</div>

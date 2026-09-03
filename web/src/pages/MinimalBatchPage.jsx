@@ -23,7 +23,7 @@ function linesToTickets(text) {
 
 export default function MinimalBatchPage() {
   const navigate = useNavigate();
-  const { setActiveProject, resetRun } = useProjectStore();
+  const { setActiveProject, resetRun, clearBoardRunState } = useProjectStore();
   const { lastRepoPath, setLastRepoPath, setInterfaceMode } = useUiStore();
 
   const [name, setName] = useState('');
@@ -69,8 +69,8 @@ export default function MinimalBatchPage() {
         tickets,
       });
       setActiveProject(project);
-      resetRun();
-      navigate(`/project/${project.id}`, { replace: true });
+      clearBoardRunState();
+      navigate(`/board/${project.id}`, { replace: true });
     } catch (e) {
       window.alert(e.response?.data?.detail || e.message || 'Failed to create batch');
     } finally {

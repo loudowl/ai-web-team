@@ -83,6 +83,16 @@ def _migrate(c):
     ticket_cols = {row[1] for row in c.execute("PRAGMA table_info(tickets)").fetchall()}
     if "pr_url" not in ticket_cols:
         c.execute("ALTER TABLE tickets ADD COLUMN pr_url TEXT")
+    if "board_lane" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN board_lane TEXT NOT NULL DEFAULT 'todo'")
+    if "workflow" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN workflow TEXT")
+    if "archived_at" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN archived_at TEXT")
+    if "fix_version" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN fix_version TEXT")
+    if "collab_branch" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN collab_branch TEXT")
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -115,7 +125,20 @@ def get_project(project_id: str) -> Optional[Dict]:
 
 def list_projects(limit: int = 20) -> List[Dict]:
     with _conn() as c:
-        rows = c.execute("SELECT * FROM projects ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute(
+            """
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM tickets t
+                    WHERE t.project_id = p.id AND t.archived_at IS NULL) AS ticket_count,
+                   (SELECT COUNT(*) FROM tickets t
+                    WHERE t.project_id = p.id AND t.archived_at IS NULL
+                      AND COALESCE(t.board_lane, 'todo') = 'in_progress') AS in_progress_count
+            FROM projects p
+            ORDER BY p.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -206,17 +229,19 @@ def create_ticket(
     jira_url: str = None,
     acceptance_criteria: str = "",
     tasks_json: str = None,
+    board_lane: str = "todo",
+    fix_version: str = None,
 ) -> Dict:
     now = datetime.utcnow().isoformat()
     with _conn() as c:
         c.execute(
             """INSERT INTO tickets
                (id, project_id, ticket_key, title, description, jira_url,
-                acceptance_criteria, status, tasks_json, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                acceptance_criteria, status, tasks_json, board_lane, fix_version, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 ticket_id, project_id, ticket_key, title, description, jira_url,
-                acceptance_criteria, "pending", tasks_json, now, now,
+                acceptance_criteria, "pending", tasks_json, board_lane, fix_version, now, now,
             ),
         )
     return get_ticket(ticket_id)
@@ -228,12 +253,65 @@ def get_ticket(ticket_id: str) -> Optional[Dict]:
     return dict(row) if row else None
 
 
-def list_tickets(project_id: str) -> List[Dict]:
+def list_tickets(project_id: str, include_archived: bool = False) -> List[Dict]:
+    with _conn() as c:
+        if include_archived:
+            rows = c.execute(
+                "SELECT * FROM tickets WHERE project_id=? ORDER BY created_at",
+                (project_id,),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM tickets WHERE project_id=? AND archived_at IS NULL ORDER BY created_at",
+                (project_id,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_all_board_tickets(limit: int = 500) -> List[Dict]:
+    """All non-archived Jira tickets across projects for the global board."""
     with _conn() as c:
         rows = c.execute(
-            "SELECT * FROM tickets WHERE project_id=? ORDER BY created_at",
-            (project_id,),
+            """
+            SELECT t.*,
+                   p.name AS project_name,
+                   p.provider AS project_provider,
+                   p.model AS project_model,
+                   p.repo_context_path AS project_repo_context_path,
+                   p.status AS project_status
+            FROM tickets t
+            INNER JOIN projects p ON p.id = t.project_id
+            WHERE p.mode = 'jira' AND t.archived_at IS NULL
+            ORDER BY t.created_at ASC
+            LIMIT ?
+            """,
+            (limit,),
         ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_latest_jira_project() -> Optional[Dict]:
+    projects = list_projects(limit=50)
+    for project in projects:
+        if project.get("mode") == "jira":
+            return project
+    return None
+
+
+def list_archived_tickets(project_id: str = None, limit: int = 100) -> List[Dict]:
+    with _conn() as c:
+        if project_id:
+            rows = c.execute(
+                """SELECT * FROM tickets WHERE project_id=? AND archived_at IS NOT NULL
+                   ORDER BY archived_at DESC LIMIT ?""",
+                (project_id, limit),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                """SELECT * FROM tickets WHERE archived_at IS NOT NULL
+                   ORDER BY archived_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
     return [dict(r) for r in rows]
 
 

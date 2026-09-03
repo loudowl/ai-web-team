@@ -16,8 +16,10 @@ const MILESTONES = [
   'analyze_plan',
   'implement',
   'apply_patches',
+  'fix_lint',
   'commit_push',
   'create_pr',
+  'address_review',
 ];
 
 const MILESTONE_LABELS = {
@@ -27,8 +29,10 @@ const MILESTONE_LABELS = {
   analyze_plan: 'Analyze & plan',
   implement: 'Implement',
   apply_patches: 'Apply code changes',
+  fix_lint: 'Fix lint errors',
   commit_push: 'Commit & push',
   create_pr: 'Create pull request',
+  address_review: 'Address Copilot review',
 };
 
 /** Per-milestone dwell time (ms) — slow enough to open modals mid-run. */
@@ -39,8 +43,10 @@ const PACE = {
   analyze_plan: 4500,
   implement: 6500,
   apply_patches: 2800,
+  fix_lint: 3200,
   commit_push: 2400,
   create_pr: 2200,
+  address_review: 2800,
 };
 
 const START_STAGGER_MS = 1400;
@@ -67,8 +73,85 @@ async function streamText(onEvent, ticketId, text, chunkMs = 35) {
 }
 
 /**
- * Replay scripted WS events for all demo tickets in parallel.
- * Returns a stop function — does not touch the backend.
+ * Run a single demo ticket through the scripted pipeline (board launch).
+ */
+export function runDemoTicket(ticketId, workflow, onEvent) {
+  let cancelled = false;
+  const ticket = DEMO_TICKETS.find(t => t.id === ticketId);
+  if (!ticket) return () => {};
+
+  const stop = () => { cancelled = true; };
+
+  (async () => {
+    const thoughts = DEMO_THOUGHTS[ticket.id] || ['Working…'];
+    let thoughtIdx = 0;
+    const prNum = 2400 + demoTicketNumber(ticket.id);
+    const fast = workflow === 'fix' ? 0.55 : workflow === 'full_cycle' ? 1.15 : 1;
+
+    emit(onEvent, 'board_lane', 'in_progress', ticket.id);
+    emit(onEvent, 'ticket_start', `Starting ${ticket.ticket_key}…`, ticket.id);
+    emit(onEvent, 'agent_start', `Senior Dev → ${ticket.title}`, ticket.id);
+
+    for (let i = 0; i < MILESTONES.length; i += 1) {
+      if (cancelled) return;
+      const mid = MILESTONES[i];
+      if (workflow === 'fix' && mid === 'address_review') {
+        emit(onEvent, 'milestone', {
+          milestone_id: mid,
+          label: MILESTONE_LABELS[mid],
+          status: 'done',
+          detail: 'Skipped (fix workflow)',
+        }, ticket.id);
+        continue;
+      }
+
+      const label = MILESTONE_LABELS[mid];
+      const dwell = Math.round((PACE[mid] || 2500) * fast);
+
+      emit(onEvent, 'milestone', { milestone_id: mid, label, status: 'running', detail: label }, ticket.id);
+      emit(onEvent, 'thinking', {
+        phase: mid,
+        message: thoughts[thoughtIdx] || `Working on ${label.toLowerCase()}…`,
+      }, ticket.id);
+      thoughtIdx = Math.min(thoughtIdx + 1, thoughts.length - 1);
+
+      if (mid === 'analyze_plan') {
+        const plan = getDemoPlan(ticket);
+        await streamText(onEvent, ticket.id, plan, 40);
+        if (cancelled) return;
+        emit(onEvent, 'tasks', JSON.stringify(getDemoTasks(ticket)), ticket.id);
+        await sleep(Math.max(400, dwell - plan.length * 40));
+      } else if (mid === 'implement') {
+        const code = getDemoCode(ticket);
+        await streamText(onEvent, ticket.id, '\n\n---\n\n# Implementation\n\n' + code, 28);
+        if (cancelled) return;
+        await sleep(800);
+      } else {
+        await sleep(dwell);
+      }
+
+      if (cancelled) return;
+
+      if (mid === 'create_pr') {
+        const prUrl = `https://github.com/foxnews/fts-foxnews.com/pull/${prNum}`;
+        emit(onEvent, 'milestone', { milestone_id: mid, label, status: 'done', detail: prUrl }, ticket.id);
+        emit(onEvent, 'pr_created', prUrl, ticket.id);
+        emit(onEvent, 'board_lane', 'in_review', ticket.id);
+      } else {
+        emit(onEvent, 'milestone', { milestone_id: mid, label, status: 'done', detail: '' }, ticket.id);
+      }
+    }
+
+    if (cancelled) return;
+    emit(onEvent, 'ticket_done', `PR opened for ${ticket.ticket_key}`, ticket.id);
+    emit(onEvent, 'agent_done', `Finished ${ticket.ticket_key}`, ticket.id);
+  })();
+
+  return stop;
+}
+
+/**
+ * Replay scripted WS events for all demo tickets in parallel (legacy auto-run).
  */
 export function startDemoSimulation(onEvent, onProjectUpdate) {
   let cancelled = false;
@@ -161,7 +244,13 @@ export function getDemoProject() {
 }
 
 export function getDemoTickets() {
-  return DEMO_TICKETS.map(t => ({ ...t }));
+  const project = createDemoProject();
+  return DEMO_TICKETS.map(t => ({
+    ...t,
+    board_lane: t.board_lane || 'todo',
+    assigned_provider: project.provider,
+    assigned_model: project.model,
+  }));
 }
 
 export { DEMO_PROJECT_ID };
