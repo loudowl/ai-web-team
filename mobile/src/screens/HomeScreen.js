@@ -76,7 +76,7 @@ export default function HomeScreen() {
       <StatusBar barStyle="light-content" />
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>AI Web Team</Text>
+          <Text style={styles.headerTitle}>AI Software Team</Text>
           <Text style={styles.headerSub}>Multi-agent project generator</Text>
         </View>
         <TouchableOpacity

@@ -12,7 +12,7 @@ const LINKS = [
 export default function AppNav() {
   return (
     <nav className="app-global-nav" aria-label="Main navigation">
-      <span className="app-global-nav-brand">AI Web Team</span>
+      <span className="app-global-nav-brand">AI Software Team</span>
       <div className="app-global-nav-links">
         {LINKS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
