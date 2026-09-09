@@ -21,6 +21,9 @@ export const addBoardTicket = (projectId, payload) =>
 export const updateTicketLane = (projectId, ticketId, boardLane) =>
   api.patch(`/api/projects/${projectId}/tickets/${ticketId}`, { board_lane: boardLane }).then(r => r.data);
 
+export const updateTicketProperties = (projectId, ticketId, payload) =>
+  api.patch(`/api/projects/${projectId}/tickets/${ticketId}`, payload).then(r => r.data);
+
 export const archiveTicket = (projectId, ticketId) =>
   api.patch(`/api/projects/${projectId}/tickets/${ticketId}`, { archive: true }).then(r => r.data);
 
@@ -37,6 +40,27 @@ export const listGlobalBoardTickets = () =>
 
 export const getDefaultJiraProject = () =>
   api.get('/api/board/default-project').then(r => r.data);
+
+export const listJiraBoards = (projectKey) =>
+  api.get('/api/jira-poll/boards', { params: projectKey ? { project_key: projectKey } : {} }).then(r => r.data.boards);
+
+export const getJiraPollStatus = (projectId) =>
+  api.get(`/api/jira-poll/projects/${projectId}/status`).then(r => r.data);
+
+export const syncJiraPoll = (projectId, payload = {}) =>
+  api.post(`/api/jira-poll/projects/${projectId}/sync`, payload).then(r => r.data);
+
+export const resetJiraBoard = (projectId, payload = {}) =>
+  api.post(`/api/jira-poll/projects/${projectId}/reset`, payload).then(r => r.data);
+
+export const startJiraPoll = (projectId, payload = {}) =>
+  api.post(`/api/jira-poll/projects/${projectId}/start`, payload).then(r => r.data);
+
+export const stopJiraPoll = (projectId) =>
+  api.post(`/api/jira-poll/projects/${projectId}/stop`).then(r => r.data);
+
+export const reassignJiraPollModels = (projectId, payload = {}) =>
+  api.post(`/api/jira-poll/projects/${projectId}/reassign-models`, payload).then(r => r.data);
 
 export const getProject = (id) =>
   api.get(`/api/projects/${id}`).then(r => r.data);

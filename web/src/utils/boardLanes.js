@@ -1,4 +1,5 @@
 export const BOARD_LANES = [
+  { id: 'pre_assessed', label: 'Pre assessed', color: '#bc8cff' },
   { id: 'todo', label: 'To Do', color: '#8b949e' },
   { id: 'in_progress', label: 'In Progress', color: '#d29922' },
   { id: 'in_review', label: 'In Review', color: '#58a6ff' },
@@ -23,6 +24,75 @@ export const WORKFLOWS = [
   },
 ];
 
+export const TSHIRT_ORDER = { XS: 0, S: 1, M: 2, L: 3, XL: 4, XXL: 5 };
+
+export const PRIORITY_ORDER = {
+  highest: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  lowest: 4,
+};
+
+const PRIORITY_RANK = (priority) => {
+  const key = String(priority || '').trim().toLowerCase();
+  return PRIORITY_ORDER[key] ?? 99;
+};
+
+const TSHIRT_RANK = (ticket) => {
+  const size = (ticket.t_shirt_size || ticket.recommended_t_shirt_size || '').toUpperCase();
+  return TSHIRT_ORDER[size] ?? 99;
+};
+
+export function comparePreAssessedTickets(a, b) {
+  const pr = PRIORITY_RANK(a.jira_priority) - PRIORITY_RANK(b.jira_priority);
+  if (pr !== 0) return pr;
+  return TSHIRT_RANK(a) - TSHIRT_RANK(b);
+}
+
+export const TSHIRT_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Unknown'];
+
+export function ticketRecSize(ticket) {
+  const size = (ticket?.t_shirt_size || ticket?.recommended_t_shirt_size || '').trim().toUpperCase();
+  return TSHIRT_ORDER[size] !== undefined ? size : 'Unknown';
+}
+
+export function groupPreAssessedBySize(tickets) {
+  const buckets = new Map();
+  for (const t of tickets) {
+    const size = ticketRecSize(t);
+    if (!buckets.has(size)) buckets.set(size, []);
+    buckets.get(size).push(t);
+  }
+  return TSHIRT_SIZE_ORDER
+    .filter(size => buckets.has(size))
+    .map(size => ({
+      size,
+      label: size === 'Unknown' ? 'Unknown size' : `Rec size ${size}`,
+      tickets: [...buckets.get(size)].sort(comparePreAssessedTickets),
+    }));
+}
+
+/** Group Pre assessed lane tickets by recommended fix version, sorted by priority then t-shirt. */
+export function groupPreAssessedTickets(tickets) {
+  const sections = new Map();
+  for (const t of tickets) {
+    const key = (t.recommended_fix_version || t.fix_version || 'Unassigned').trim() || 'Unassigned';
+    if (!sections.has(key)) sections.set(key, []);
+    sections.get(key).push(t);
+  }
+  return [...sections.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map(([fixVersion, items]) => ({
+      fixVersion,
+      tickets: [...items].sort(comparePreAssessedTickets),
+      sizeGroups: groupPreAssessedBySize(items),
+    }));
+}
+
+/** @deprecated use groupPreAssessedTickets */
+export const groupPreGroomedTickets = groupPreAssessedTickets;
+
 /** Resolve swim lane from ticket row, live state, and optional manual override. */
 export function resolveTicketLane(ticket, ticketState = {}, laneOverride = null) {
   if (!ticket || ticket.archived_at) return null;
@@ -33,14 +103,17 @@ export function resolveTicketLane(ticket, ticketState = {}, laneOverride = null)
   if (ticket.board_lane === 'dev_complete') return 'dev_complete';
   if (ticket.board_lane === 'in_review') return 'in_review';
   if (ticket.board_lane === 'in_progress') return 'in_progress';
+  if (ticket.board_lane === 'pre_assessed' || ticket.board_lane === 'pre_groomed') return 'pre_assessed';
   if (ts.boardLane === 'dev_complete') return 'dev_complete';
   if (ts.boardLane === 'in_review') return 'in_review';
   if (ts.boardLane === 'in_progress') return 'in_progress';
+  if (ts.boardLane === 'pre_assessed' || ts.boardLane === 'pre_groomed') return 'pre_assessed';
   if (ts.status === 'running' || ts.active) return 'in_progress';
   if (ts.prUrl || ticket.pr_url) return 'in_review';
   if (ticket.board_lane && BOARD_LANES.some(l => l.id === ticket.board_lane)) {
     return ticket.board_lane;
   }
+  if (!(ticket.fix_version || '').trim()) return 'pre_assessed';
   return 'todo';
 }
 

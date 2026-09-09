@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import TicketSwimBoard from '../components/TicketSwimBoard';
+import JiraPollPanel from '../components/JiraPollPanel';
 import BoardMemoryMeter from '../components/BoardMemoryMeter';
 import TicketModal from '../components/TicketModal';
 import { connectWS, listProjects } from '../services/api';
@@ -72,7 +73,7 @@ export default function JiraBoardPage() {
   const hasTickets = tickets.filter(t => !t.archived_at).length > 0;
 
   return (
-    <div className="screen minimal-project">
+    <div className="screen minimal-project jira-board-page">
       <div className="navbar jira-board-navbar">
         <div className="nav-center jira-board-nav-center">
           <span className="nav-title">Jira board</span>
@@ -90,6 +91,14 @@ export default function JiraBoardPage() {
           ? `${meta.ticket_count} active ticket${meta.ticket_count === 1 ? '' : 's'} across ${meta.project_count} batch${meta.project_count === 1 ? '' : 'es'}.`
           : 'All non-archived tickets from every Jira batch appear here.'}
       </div>
+
+      {defaultProjectId && (
+        <JiraPollPanel
+          projectId={defaultProjectId}
+          reassignAllProjects
+          onSynced={() => syncGlobalBoardTickets()}
+        />
+      )}
 
       {hasTickets && (
         <BoardMemoryMeter projectId={defaultProjectId} />

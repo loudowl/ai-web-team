@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Trash2 } from 'lucide-react';
-import { listModels, deleteModel } from '../services/api';
+import { listModels, listProviderChoices, deleteModel } from '../services/api';
+import { PROVIDERS } from '../utils/modelPicker';
 import { streamOllamaPull } from '../utils/ollamaPull';
 import OllamaMemoryMeter from '../components/OllamaMemoryMeter';
 
@@ -56,13 +57,21 @@ function PullProgress({ model, onDone }) {
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [models, setModels]       = useState(null);
+  const [providerChoices, setProviderChoices] = useState(null);
   const [pullModel, setPullModel] = useState('');
   const [pulling, setPulling]     = useState(false);
   const [loading, setLoading]     = useState(true);
 
   const load = () => {
     setLoading(true);
-    listModels().then(m => { setModels(m); setLoading(false); }).catch(() => setLoading(false));
+    Promise.all([
+      listModels().catch(() => null),
+      listProviderChoices().catch(() => null),
+    ]).then(([m, choices]) => {
+      setModels(m);
+      setProviderChoices(choices);
+      setLoading(false);
+    });
   };
 
   useEffect(() => { load(); }, []);
@@ -94,18 +103,26 @@ export default function SettingsPage() {
 
       <div className="content">
         <div className="section">AI Providers</div>
-        {models?.providers ? Object.entries(models.providers).map(([key, info]) => (
-          <div key={key} className="settings-row">
-            <span className="dot" style={{ background: info.available ? '#3fb950' : '#f85149' }} />
-            <div style={{ flex: 1 }}>
-              <div className="provider-name">{key.charAt(0).toUpperCase() + key.slice(1)}</div>
-              <div className="provider-model">{info.model}</div>
+        {PROVIDERS.map(({ key, label }) => {
+          const info = providerChoices?.providers?.[key] ?? models?.providers?.[key];
+          if (!info) return null;
+          const available = key === 'ollama' ? true : (info.available ?? false);
+          return (
+            <div key={key} className={`settings-row${available ? '' : ' settings-row-disabled'}`}>
+              <span className="dot" style={{ background: available ? '#3fb950' : '#484f58' }} />
+              <div style={{ flex: 1 }}>
+                <div className="provider-name">{label}</div>
+                <div className="provider-model">{info.default || info.model || '—'}</div>
+              </div>
+              <span className="provider-status" style={{ color: available ? '#3fb950' : '#8b949e' }}>
+                {available ? 'Ready' : 'Not configured'}
+              </span>
             </div>
-            <span className="provider-status" style={{ color: info.available ? '#3fb950' : '#f85149' }}>
-              {info.available ? 'Ready' : 'No key'}
-            </span>
-          </div>
-        )) : loading ? <div className="center-row"><span className="spinner blue" /></div> : null}
+          );
+        })}
+        {loading && !models && !providerChoices ? (
+          <div className="center-row"><span className="spinner blue" /></div>
+        ) : null}
 
         <div className="section">Ollama Memory</div>
         <OllamaMemoryMeter />

@@ -7,12 +7,14 @@ from pydantic import BaseModel
 
 import database as db
 from agents.jira_runner import ingest_tickets, run_single_ticket
+from models.model_catalog import validate_model_choice
 from models.providers import resolve_ollama_model, ollama_missing_info
+from utils.jira_client import parse_project_key
 from routes.ws_hub import is_ticket_running, schedule_ticket_run
 
 router = APIRouter(prefix="/api/projects", tags=["board"])
 
-VALID_LANES = frozenset({"todo", "in_progress", "in_review", "dev_complete"})
+VALID_LANES = frozenset({"pre_assessed", "todo", "in_progress", "in_review", "dev_complete"})
 VALID_WORKFLOWS = frozenset({"simple", "fix", "full_cycle"})
 
 
@@ -25,6 +27,13 @@ class AddTicketRequest(BaseModel):
 class UpdateTicketBoardRequest(BaseModel):
     board_lane: Optional[str] = None
     archive: Optional[bool] = None
+    fix_version: Optional[str] = None
+    t_shirt_size: Optional[str] = None
+    assigned_provider: Optional[str] = None
+    assigned_model: Optional[str] = None
+    recommended_fix_version: Optional[str] = None
+    recommended_t_shirt_size: Optional[str] = None
+    jira_priority: Optional[str] = None
 
 
 class RunTicketRequest(BaseModel):
@@ -41,7 +50,8 @@ def add_ticket(project_id: str, req: AddTicketRequest):
 
     created = ingest_tickets(project_id, [req.model_dump()])
     row = created[0]
-    db.update_ticket(row["id"], board_lane="todo")
+    if not row.get("board_lane"):
+        db.update_ticket(row["id"], board_lane="todo")
     return db.get_ticket(row["id"])
 
 
@@ -56,9 +66,60 @@ def update_ticket_board(project_id: str, ticket_id: str, req: UpdateTicketBoardR
 
     fields = {}
     if req.board_lane is not None:
-        if req.board_lane not in VALID_LANES:
+        lane = req.board_lane
+        if lane == "pre_groomed":
+            lane = "pre_assessed"
+        if lane not in VALID_LANES:
             raise HTTPException(status_code=400, detail=f"Invalid lane: {req.board_lane}")
-        fields["board_lane"] = req.board_lane
+        fields["board_lane"] = lane
+        if lane == "pre_assessed":
+            from agents.grooming import groom_ticket
+
+            groomed = groom_ticket(
+                {
+                    "key": ticket.get("ticket_key") or "",
+                    "project_key": parse_project_key(ticket.get("ticket_key")),
+                    "fix_version": ticket.get("fix_version") or "",
+                    "t_shirt_size": ticket.get("t_shirt_size") or "",
+                    "jira_priority": ticket.get("jira_priority") or "",
+                    "title": ticket.get("title") or "",
+                    "description": ticket.get("description") or "",
+                    "acceptance_criteria": ticket.get("acceptance_criteria") or "",
+                    "story_points": ticket.get("complexity_score"),
+                },
+                tier=ticket.get("complexity_tier"),
+                score=ticket.get("complexity_score"),
+            )
+            if not (ticket.get("t_shirt_size") or "").strip():
+                fields["recommended_t_shirt_size"] = groomed.get("recommended_t_shirt_size")
+                fields["recommended_t_shirt_size_reason"] = groomed.get("recommended_t_shirt_size_reason")
+                fields["creator_questions_json"] = groomed.get("creator_questions_json")
+            if not (ticket.get("fix_version") or "").strip():
+                fields["recommended_fix_version"] = groomed.get("recommended_fix_version")
+            if not (ticket.get("jira_priority") or "").strip() and groomed.get("jira_priority"):
+                fields["jira_priority"] = groomed.get("jira_priority")
+    if req.fix_version is not None:
+        fields["fix_version"] = req.fix_version.strip() or None
+        if req.fix_version.strip():
+            fields["recommended_fix_version"] = None
+    if req.t_shirt_size is not None:
+        fields["t_shirt_size"] = req.t_shirt_size.strip().upper() or None
+        if req.t_shirt_size.strip():
+            fields["recommended_t_shirt_size"] = None
+            fields["recommended_t_shirt_size_reason"] = None
+    if req.recommended_fix_version is not None:
+        fields["recommended_fix_version"] = req.recommended_fix_version.strip() or None
+    if req.recommended_t_shirt_size is not None:
+        fields["recommended_t_shirt_size"] = req.recommended_t_shirt_size.strip().upper() or None
+    if req.jira_priority is not None:
+        fields["jira_priority"] = req.jira_priority.strip() or None
+    if req.assigned_provider is not None:
+        fields["assigned_provider"] = req.assigned_provider
+    if req.assigned_model is not None:
+        err = validate_model_choice(req.assigned_provider or ticket.get("assigned_provider") or project["provider"], req.assigned_model)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        fields["assigned_model"] = req.assigned_model
     if req.archive:
         from datetime import datetime
         fields["archived_at"] = datetime.utcnow().isoformat()

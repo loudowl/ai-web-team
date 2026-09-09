@@ -50,19 +50,19 @@ WORKFLOW_PRESETS = {
 }
 
 
-def _configure_jira_models(project: dict) -> str:
-    """Resolve senior_dev model for a Jira project; returns the Ollama tag in use."""
-    if project.get("provider") != "ollama":
-        if project.get("model"):
-            config.AGENT_MODELS["senior_dev"] = project["model"]
-        return project.get("model") or ""
+def _configure_jira_models(project: dict, ticket_row: dict = None) -> str:
+    """Resolve senior_dev model for a Jira project/ticket; returns model id in use."""
+    ticket_row = ticket_row or {}
+    provider = ticket_row.get("assigned_provider") or project.get("provider")
+    model = ticket_row.get("assigned_model") or project.get("model")
 
-    requested = project.get("model") or config.SENIOR_DEV_MODEL or config.OLLAMA_MODEL
-    model = resolve_ollama_model(requested, allow_fallback=not bool(project.get("model")))
-    config.AGENT_MODELS["senior_dev"] = model
+    if provider == "ollama":
+        model = resolve_ollama_model(model or config.OLLAMA_MODEL, allow_fallback=not bool(project.get("model")))
+
+    config.AGENT_MODELS["senior_dev"] = model or config.ANTHROPIC_MODEL
     review_model = config.AGENT_MODELS.get("code_reviewer") or model
     config.AGENT_MODELS["code_reviewer"] = review_model
-    return model
+    return model or ""
 
 
 async def replay_board_state(project_id: str, send: Callable[[str], Awaitable[None]]):
@@ -108,8 +108,7 @@ async def run_single_ticket(
     if not ticket_row or ticket_row["project_id"] != project_id:
         raise ValueError("Ticket not found")
 
-    if project.get("provider") == "ollama":
-        _configure_jira_models(project)
+    _configure_jira_models(project, ticket_row)
 
     if project["status"] == "pending":
         db.update_project(project_id, status="ready")
@@ -300,8 +299,26 @@ async def run_ticket(
     workflow: dict = None,
 ):
     ticket_id = ticket_row["id"]
-    provider = project["provider"]
-    project_model = project.get("model")
+    provider = ticket_row.get("assigned_provider") or project["provider"]
+    project_model = ticket_row.get("assigned_model") or project.get("model")
+    if provider == "ollama":
+        project_model = resolve_ollama_model(
+            project_model or project.get("model") or config.OLLAMA_MODEL,
+            allow_fallback=True,
+        )
+    elif provider in ("cursor", "gemini"):
+        # Cursor/Gemini selection is stored on the ticket; execution uses cloud fallback until bridged.
+        if config.ANTHROPIC_API_KEY:
+            provider = "anthropic"
+            project_model = config.ANTHROPIC_MODEL
+        elif config.OPENAI_API_KEY:
+            provider = "openai"
+            project_model = config.OPENAI_MODEL
+        else:
+            raise RuntimeError(
+                f"Ticket is assigned to {ticket_row.get('assigned_provider') or project['provider']} "
+                "but no Cursor/Gemini execution bridge is configured. Add Anthropic or OpenAI keys."
+            )
     wf = workflow or WORKFLOW_PRESETS["simple"]
     lint_enabled = wf.get("lint", config.JIRA_LINT_ENABLED)
     copilot_enabled = wf.get("copilot", config.JIRA_COPILOT_REVIEW)
@@ -574,8 +591,6 @@ async def run_jira_pipeline(
     # Resolve models for Jira work
     if project.get("provider") == "ollama":
         model = _configure_jira_models(project)
-        if model and model != project.get("model"):
-            db.update_project(project_id, model=model)
     elif project.get("model"):
         config.AGENT_MODELS["senior_dev"] = project["model"]
 
@@ -606,8 +621,25 @@ async def run_jira_pipeline(
     }))
 
 
-def ingest_tickets(project_id: str, ticket_inputs: List[dict]) -> List[Dict]:
-    """Create ticket rows from API/manual inputs."""
+def _project_assignment(project: dict) -> dict:
+    from models.model_catalog import default_model_for_provider
+    provider = project.get("provider") or "anthropic"
+    model = project.get("model") or default_model_for_provider(provider)
+    return {"provider": provider, "model": model}
+
+
+def ingest_tickets(project_id: str, ticket_inputs: List[dict], *, auto_assign: bool = True) -> List[Dict]:
+    """Create ticket rows from API/manual inputs.
+
+    Manual ingest honors the batch project provider/model (New Jira Project, Add ticket).
+    Complexity tier is still scored for metadata when auto_assign is enabled.
+    """
+    from agents.complexity import score_ticket
+    from agents.grooming import groom_ticket
+
+    project = db.get_project(project_id) or {}
+    assignment = _project_assignment(project)
+
     created = []
     for raw in ticket_inputs:
         data = fetch_ticket(
@@ -615,6 +647,23 @@ def ingest_tickets(project_id: str, ticket_inputs: List[dict]) -> List[Dict]:
             ticket_key=raw.get("ticket_key"),
             manual=raw.get("manual"),
         )
+        key = data.get("key")
+        if key and db.find_ticket_by_key(project_id, key):
+            continue
+
+        tier, score = None, None
+        groomed = {}
+        if auto_assign:
+            if not data.get("project_key"):
+                from utils.jira_client import parse_project_key
+                data["project_key"] = (
+                    parse_project_key(data.get("key"), data.get("jira_url"))
+                    or project.get("jira_project_key")
+                    or ""
+                )
+            tier, score = score_ticket(data)
+            groomed = groom_ticket(data, tier=tier, score=score)
+
         tid = str(uuid.uuid4())[:8]
         row = db.create_ticket(
             ticket_id=tid,
@@ -624,7 +673,20 @@ def ingest_tickets(project_id: str, ticket_inputs: List[dict]) -> List[Dict]:
             ticket_key=data.get("key"),
             jira_url=data.get("jira_url"),
             acceptance_criteria=data.get("acceptance_criteria", ""),
-            fix_version=data.get("fix_version") or None,
+            fix_version=groomed.get("fix_version") or data.get("fix_version") or None,
+            board_lane=groomed.get("board_lane") or ("pre_assessed" if not (data.get("fix_version") or "").strip() else "todo"),
+            assigned_provider=assignment["provider"],
+            assigned_model=assignment["model"],
+            complexity_tier=groomed.get("complexity_tier") or tier,
+            complexity_score=groomed.get("complexity_score") or score,
+            jira_status=data.get("jira_status") or "",
+            ingest_source=data.get("source") or "manual",
+            jira_priority=groomed.get("jira_priority") or data.get("jira_priority"),
+            t_shirt_size=groomed.get("t_shirt_size") or data.get("t_shirt_size"),
+            recommended_t_shirt_size=groomed.get("recommended_t_shirt_size"),
+            recommended_t_shirt_size_reason=groomed.get("recommended_t_shirt_size_reason"),
+            creator_questions_json=groomed.get("creator_questions_json"),
+            recommended_fix_version=groomed.get("recommended_fix_version"),
         )
         created.append(row)
     return created

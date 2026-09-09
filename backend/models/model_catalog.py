@@ -87,6 +87,54 @@ ANTHROPIC_MODELS: List[dict] = [
     },
 ]
 
+GEMINI_MODELS: List[dict] = [
+    {
+        "id": "gemini-2.5-pro",
+        "display": "Gemini 2.5 Pro",
+        "tier": "frontier",
+        "description": "Google flagship — complex reasoning (API execution planned)",
+        "selectable": True,
+    },
+    {
+        "id": "gemini-2.5-flash",
+        "display": "Gemini 2.5 Flash",
+        "tier": "recent",
+        "description": "Fast Google model for medium-complexity tasks",
+        "selectable": True,
+    },
+]
+
+CURSOR_MODELS: List[dict] = [
+    {
+        "id": "composer-2.5",
+        "display": "Composer 2.5",
+        "tier": "frontier",
+        "description": "Cursor agent model — balanced quality and speed (CLI bridge not wired yet)",
+        "selectable": True,
+    },
+    {
+        "id": "composer-2.5-fast",
+        "display": "Composer 2.5 Fast",
+        "tier": "recent",
+        "description": "Faster Cursor agent model for simpler tickets (CLI bridge not wired yet)",
+        "selectable": True,
+    },
+    {
+        "id": "claude-sonnet-4-6-cursor",
+        "display": "Claude Sonnet (via Cursor)",
+        "tier": "frontier",
+        "description": "Cursor-routed Anthropic model",
+        "selectable": True,
+    },
+    {
+        "id": "gpt-5.6-cursor",
+        "display": "GPT-5.6 (via Cursor)",
+        "tier": "frontier",
+        "description": "Cursor-routed OpenAI model",
+        "selectable": True,
+    },
+]
+
 # Top 10 local coding models — Chinese vendors shown but not selectable (enterprise policy)
 OLLAMA_CODING_MODELS: List[dict] = [
     {
@@ -383,6 +431,19 @@ def get_provider_choices() -> dict:
         return catalog[0]["id"]
 
     ollama_default = pick_default(OLLAMA_CODING_MODELS, ollama_default)
+    gemini_default = config.GEMINI_MODEL or "gemini-2.5-pro"
+    cursor_default = "composer-2.5"
+    gemini_available = bool(config.GOOGLE_API_KEY)
+    gemini_unavailable_reason = "Set GOOGLE_API_KEY in backend .env to enable Gemini"
+
+    def _catalog_for_provider(catalog, default, available, unavailable_reason=None):
+        models = _mark_default(catalog, pick_default(catalog, default))
+        if available:
+            return models
+        return [
+            {**m, "selectable": False, "reason": unavailable_reason or "Provider not configured"}
+            for m in models
+        ]
 
     return {
         "tier_labels": TIER_LABELS,
@@ -397,6 +458,22 @@ def get_provider_choices() -> dict:
                 "default": pick_default(ANTHROPIC_MODELS, anthropic_default),
                 "models": _mark_default(ANTHROPIC_MODELS, pick_default(ANTHROPIC_MODELS, anthropic_default)),
             },
+            "gemini": {
+                "available": gemini_available,
+                "default": pick_default(GEMINI_MODELS, gemini_default),
+                "models": _catalog_for_provider(
+                    GEMINI_MODELS, gemini_default, gemini_available, gemini_unavailable_reason,
+                ),
+                "experimental": True,
+                "unavailable_reason": None if gemini_available else gemini_unavailable_reason,
+            },
+            "cursor": {
+                "available": config.CURSOR_MODELS_ENABLED,
+                "default": cursor_default,
+                "models": _mark_default(CURSOR_MODELS, cursor_default),
+                "experimental": True,
+                "note": "Cursor CLI execution not wired yet — selection is stored; runs use the project fallback provider",
+            },
             "ollama": {
                 "available": True,
                 "default": ollama_default,
@@ -407,11 +484,28 @@ def get_provider_choices() -> dict:
     }
 
 
+def default_model_for_provider(provider: str) -> str:
+    choices = get_provider_choices()["providers"].get(provider, {})
+    default = choices.get("default")
+    if default:
+        return default
+    return {
+        "openai": config.OPENAI_MODEL,
+        "anthropic": config.ANTHROPIC_MODEL,
+        "gemini": config.GEMINI_MODEL,
+        "cursor": "composer-2.5",
+        "ollama": config.OLLAMA_MODEL,
+    }.get(provider, config.OLLAMA_MODEL)
+
+
 def validate_model_choice(provider: str, model: str) -> Optional[str]:
     """Return error message if model is invalid; None if OK."""
     if not model:
         return None
     choices = get_provider_choices()["providers"].get(provider, {})
+    if not choices.get("available", True):
+        reason = choices.get("unavailable_reason") or f"{provider} is not configured"
+        return reason
     catalog = {m["id"]: m for m in choices.get("models", [])}
     entry = catalog.get(model)
     if not entry:

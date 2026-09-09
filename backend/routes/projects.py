@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import config
-from models.model_catalog import validate_model_choice
+from models.model_catalog import validate_model_choice, default_model_for_provider
 import database as db
 from agents.jira_runner import ingest_tickets
 from utils.github_push import push_project
@@ -47,11 +47,7 @@ def list_projects():
 @router.post("")
 def create_project(req: CreateProjectRequest):
     project_id = str(uuid.uuid4())[:8]
-    model = req.model or {
-        "openai":    config.OPENAI_MODEL,
-        "anthropic": config.ANTHROPIC_MODEL,
-        "ollama":    config.OLLAMA_MODEL,
-    }.get(req.provider, config.OLLAMA_MODEL)
+    model = req.model or default_model_for_provider(req.provider)
 
     err = validate_model_choice(req.provider, model)
     if err:
