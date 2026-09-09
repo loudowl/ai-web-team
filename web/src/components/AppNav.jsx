@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Home, LayoutGrid, TicketPlus, Settings } from 'lucide-react';
+import { Brain, Home, LayoutGrid, TicketPlus, Settings } from 'lucide-react';
 
 const LINKS = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/new/jira', label: 'New Jira project', icon: TicketPlus },
   { to: '/board', label: 'Jira board', icon: LayoutGrid },
+  { to: '/recommendations', label: 'Model recommendation view', icon: Brain },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

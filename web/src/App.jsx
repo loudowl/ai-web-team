@@ -5,6 +5,7 @@ import NewProjectPage from './pages/NewProjectPage.jsx';
 import MinimalBatchPage from './pages/MinimalBatchPage.jsx';
 import ProjectPage from './pages/ProjectPage.jsx';
 import JiraBoardPage from './pages/JiraBoardPage.jsx';
+import ModelRecommendationPage from './pages/ModelRecommendationPage.jsx';
 import ArchivedTicketsPage from './pages/ArchivedTicketsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import { useUiStore } from './store/uiStore.js';
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/batch" element={<MinimalBatchPage />} />
         <Route path="/project/:projectId" element={<ProjectPage />} />
         <Route path="/board" element={<JiraBoardPage />} />
+        <Route path="/recommendations" element={<ModelRecommendationPage />} />
         <Route path="/board/:projectId" element={<ProjectPage />} />
         <Route path="/archived" element={<ArchivedTicketsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
