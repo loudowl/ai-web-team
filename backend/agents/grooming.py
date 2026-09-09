@@ -94,6 +94,7 @@ def _match_hint_to_version(hints: List[str], version_names: List[str]) -> Option
         return None
 
     by_lower = {name.lower(): name for name in version_names}
+    semver_re = re.compile(r"\d+\.\d+(?:\.\d+)?")
     for hint in hints:
         normalized = hint.strip().lower().lstrip("v")
         if not normalized:
@@ -103,8 +104,12 @@ def _match_hint_to_version(hints: List[str], version_names: List[str]) -> Option
         for lower_name, original in by_lower.items():
             if lower_name == normalized:
                 return original
-            if lower_name.startswith(normalized) or normalized.startswith(lower_name):
+            if normalized in lower_name or lower_name in normalized:
                 return original
+            if semver_re.fullmatch(normalized):
+                name_versions = semver_re.findall(lower_name)
+                if normalized in name_versions:
+                    return original
             hint_parts = normalized.split(".")
             name_parts = lower_name.split(".")
             if len(hint_parts) >= 2 and hint_parts[:2] == name_parts[:2]:
