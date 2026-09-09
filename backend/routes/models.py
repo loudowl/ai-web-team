@@ -26,6 +26,8 @@ def list_models():
         "providers": {
             "openai":    {"available": bool(config.OPENAI_API_KEY),    "model": config.OPENAI_MODEL},
             "anthropic": {"available": bool(config.ANTHROPIC_API_KEY), "model": config.ANTHROPIC_MODEL},
+            "gemini":    {"available": bool(config.GOOGLE_API_KEY),    "model": config.GEMINI_MODEL},
+            "cursor":    {"available": config.CURSOR_MODELS_ENABLED,   "model": "composer-2.5"},
             "ollama":    {"available": True,                           "model": config.OLLAMA_MODEL},
         }
     }

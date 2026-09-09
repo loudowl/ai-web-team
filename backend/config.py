@@ -55,6 +55,21 @@ DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "openai")
 JIRA_BASE_URL      = os.getenv("JIRA_BASE_URL", "")          # e.g. https://yourorg.atlassian.net
 JIRA_EMAIL         = os.getenv("JIRA_EMAIL", "")
 JIRA_API_TOKEN     = os.getenv("JIRA_API_TOKEN", "")
+JIRA_BOARD_ID      = os.getenv("JIRA_BOARD_ID", "")            # default agile board id
+JIRA_PROJECT_KEY   = os.getenv("JIRA_PROJECT_KEY", "")       # e.g. PROJ
+JIRA_TODO_JQL      = os.getenv("JIRA_TODO_JQL", "")          # override To Do query
+JIRA_POLL_INTERVAL_SEC = max(30, int(os.getenv("JIRA_POLL_INTERVAL_SEC", "300")))
+# JSON map complexity tier -> {provider, model}; empty = built-in defaults
+JIRA_MODEL_ROUTING_JSON = os.getenv("JIRA_MODEL_ROUTING_JSON", "")
+# Optional Jira custom field id for t-shirt size (e.g. customfield_10042)
+JIRA_TSHIRT_SIZE_FIELD = os.getenv("JIRA_TSHIRT_SIZE_FIELD", "")
+
+# Google Gemini (optional — catalog + routing; stream provider TBD)
+GOOGLE_API_KEY     = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL       = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+
+# Cursor-hosted models (experimental — selection only until bridge is wired)
+CURSOR_MODELS_ENABLED = os.getenv("CURSOR_MODELS_ENABLED", "true").lower() in ("1", "true", "yes")
 
 # Local git worktrees for parallel ticket work (one dir per project/ticket)
 WORKTREE_BASE        = os.getenv("WORKTREE_BASE", "data/worktrees")

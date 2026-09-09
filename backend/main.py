@@ -1,5 +1,6 @@
 """ai-web-team backend — FastAPI entry point."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import config
@@ -10,9 +11,20 @@ from routes.models import router as models_router
 from routes.projects import router as projects_router
 from routes.board import router as board_router
 from routes.board_global import router as board_global_router
+from routes.jira_poll import router as jira_poll_router
 from routes.ws import router as ws_router
+from services import jira_poll
 
-app = FastAPI(title="ai-web-team API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init()
+    await jira_poll.resume_active_polls()
+    print("✅ ai-web-team backend ready")
+    yield
+
+
+app = FastAPI(title="ai-web-team API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,14 +36,9 @@ app.add_middleware(
 app.include_router(projects_router)
 app.include_router(board_router)
 app.include_router(board_global_router)
+app.include_router(jira_poll_router)
 app.include_router(models_router)
 app.include_router(ws_router)
-
-
-@app.on_event("startup")
-def on_startup():
-    db.init()
-    print("✅ ai-web-team backend ready")
 
 
 @app.get("/api/health")
@@ -54,6 +61,7 @@ if __name__ == "__main__":
             str(backend_root / "routes"),
             str(backend_root / "models"),
             str(backend_root / "utils"),
+            str(backend_root / "services"),
         ],
         reload_excludes=[
             "data/worktrees/**",

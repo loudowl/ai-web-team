@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import AgentKanban from '../components/AgentKanban';
 import ActivityFeed from '../components/ActivityFeed';
 import TicketSwimBoard from '../components/TicketSwimBoard';
+import JiraPollPanel from '../components/JiraPollPanel';
 import BoardMemoryMeter from '../components/BoardMemoryMeter';
 import TicketModal from '../components/TicketModal';
 import { connectWS, getProject, pushToGitHub, listTickets, deleteProject } from '../services/api';
@@ -233,6 +234,13 @@ export default function ProjectPage() {
 
       {showMemoryMeter && (
         <BoardMemoryMeter projectId={projectId} model={project?.model} />
+      )}
+
+      {isJira && !isDemo && (
+        <JiraPollPanel
+          projectId={projectId}
+          onSynced={() => syncTicketsFromApi(projectId)}
+        />
       )}
 
       {isJira ? (

@@ -1,7 +1,9 @@
 export const PROVIDERS = [
   { key: 'openai',    label: 'OpenAI',    icon: '🤖', desc: 'Cloud — best quality' },
   { key: 'anthropic', label: 'Anthropic', icon: '🧠', desc: 'Cloud — strong reasoning' },
-  { key: 'ollama',    label: 'Ollama',    icon: '🦙', desc: 'Local — recommended for Jira mode' },
+  { key: 'gemini',    label: 'Gemini',    icon: '✨', desc: 'Google — frontier + flash' },
+  { key: 'cursor',    label: 'Cursor',    icon: '⌘', desc: 'Composer + Cursor-routed models (selection only until CLI bridge)' },
+  { key: 'ollama',    label: 'Ollama',    icon: '🦙', desc: 'Local — recommended for simple tickets' },
 ];
 
 export const TIER_ORDER = ['frontier', 'recent', 'coding', 'excluded'];

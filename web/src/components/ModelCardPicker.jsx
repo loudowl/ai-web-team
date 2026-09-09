@@ -56,6 +56,11 @@ export default function ModelCardPicker({ provider, choices, tierLabels, selecte
 
   return (
     <div className="model-picker">
+      {!providerInfo.available && (
+        <div className="hint model-picker-unavailable">
+          {providerInfo.unavailable_reason || 'This provider is not configured yet.'}
+        </div>
+      )}
       {groups.map(({ tier, models: tierModels }) => (
         <div key={tier} className="model-tier">
           <div className="model-tier-label">{tierLabels?.[tier] || tier}</div>

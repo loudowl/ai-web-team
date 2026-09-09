@@ -93,6 +93,50 @@ def _migrate(c):
         c.execute("ALTER TABLE tickets ADD COLUMN fix_version TEXT")
     if "collab_branch" not in ticket_cols:
         c.execute("ALTER TABLE tickets ADD COLUMN collab_branch TEXT")
+    if "assigned_provider" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN assigned_provider TEXT")
+    if "assigned_model" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN assigned_model TEXT")
+    if "complexity_tier" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN complexity_tier TEXT")
+    if "complexity_score" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN complexity_score REAL")
+    if "jira_status" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN jira_status TEXT")
+    if "ingest_source" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN ingest_source TEXT DEFAULT 'manual'")
+
+    if "jira_board_id" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_board_id TEXT")
+    if "jira_project_key" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_project_key TEXT")
+    if "jira_todo_jql" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_todo_jql TEXT")
+    if "jira_poll_active" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_poll_active INTEGER NOT NULL DEFAULT 0")
+    if "jira_poll_interval_sec" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_poll_interval_sec INTEGER NOT NULL DEFAULT 300")
+    if "jira_last_poll_at" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_last_poll_at TEXT")
+    if "jira_no_local_models" not in cols:
+        c.execute("ALTER TABLE projects ADD COLUMN jira_no_local_models INTEGER NOT NULL DEFAULT 0")
+
+    if "jira_priority" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN jira_priority TEXT")
+    if "t_shirt_size" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN t_shirt_size TEXT")
+    if "recommended_t_shirt_size" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN recommended_t_shirt_size TEXT")
+    if "recommended_fix_version" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN recommended_fix_version TEXT")
+    if "recommended_t_shirt_size_reason" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN recommended_t_shirt_size_reason TEXT")
+    if "creator_questions_json" not in ticket_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN creator_questions_json TEXT")
+
+    c.execute(
+        "UPDATE tickets SET board_lane = 'pre_assessed' WHERE board_lane = 'pre_groomed'"
+    )
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -231,20 +275,55 @@ def create_ticket(
     tasks_json: str = None,
     board_lane: str = "todo",
     fix_version: str = None,
+    assigned_provider: str = None,
+    assigned_model: str = None,
+    complexity_tier: str = None,
+    complexity_score: float = None,
+    jira_status: str = None,
+    ingest_source: str = "manual",
+    jira_priority: str = None,
+    t_shirt_size: str = None,
+    recommended_t_shirt_size: str = None,
+    recommended_t_shirt_size_reason: str = None,
+    creator_questions_json: str = None,
+    recommended_fix_version: str = None,
 ) -> Dict:
     now = datetime.utcnow().isoformat()
     with _conn() as c:
         c.execute(
             """INSERT INTO tickets
                (id, project_id, ticket_key, title, description, jira_url,
-                acceptance_criteria, status, tasks_json, board_lane, fix_version, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                acceptance_criteria, status, tasks_json, board_lane, fix_version,
+                assigned_provider, assigned_model, complexity_tier, complexity_score,
+                jira_status, ingest_source, jira_priority, t_shirt_size,
+                recommended_t_shirt_size, recommended_t_shirt_size_reason,
+                creator_questions_json, recommended_fix_version,
+                created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 ticket_id, project_id, ticket_key, title, description, jira_url,
-                acceptance_criteria, "pending", tasks_json, board_lane, fix_version, now, now,
+                acceptance_criteria, "pending", tasks_json, board_lane, fix_version,
+                assigned_provider, assigned_model, complexity_tier, complexity_score,
+                jira_status, ingest_source, jira_priority, t_shirt_size,
+                recommended_t_shirt_size, recommended_t_shirt_size_reason,
+                creator_questions_json, recommended_fix_version,
+                now, now,
             ),
         )
     return get_ticket(ticket_id)
+
+
+def find_ticket_by_key(project_id: str, ticket_key: str) -> Optional[Dict]:
+    if not ticket_key:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            """SELECT * FROM tickets
+               WHERE project_id=? AND ticket_key=? AND archived_at IS NULL
+               LIMIT 1""",
+            (project_id, ticket_key),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def get_ticket(ticket_id: str) -> Optional[Dict]:
@@ -313,6 +392,13 @@ def list_archived_tickets(project_id: str = None, limit: int = 100) -> List[Dict
                 (limit,),
             ).fetchall()
     return [dict(r) for r in rows]
+
+
+def delete_all_project_tickets(project_id: str) -> int:
+    """Remove every ticket row for a project (active and archived)."""
+    with _conn() as c:
+        cur = c.execute("DELETE FROM tickets WHERE project_id=?", (project_id,))
+        return cur.rowcount
 
 
 def update_ticket(ticket_id: str, **kwargs):
